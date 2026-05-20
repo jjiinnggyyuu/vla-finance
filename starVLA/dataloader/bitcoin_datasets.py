@@ -255,15 +255,15 @@ def get_vla_dataset(data_cfg, mode: str = "train", **kwargs) -> BitcoinOhlcDatas
     )
 
 
-def build_bitcoin_dataloader(cfg) -> DataLoader:
-    dataset = get_vla_dataset(cfg.datasets.vla_data)
+def build_bitcoin_dataloader(cfg, mode: str = "train") -> DataLoader:
+    dataset = get_vla_dataset(cfg.datasets.vla_data, mode=mode)
     num_workers = int(_cfg_get(cfg.datasets.vla_data, "num_workers", 4))
     loader_kwargs = {
         "batch_size": cfg.datasets.vla_data.per_device_batch_size,
         "collate_fn": collate_fn,
         "num_workers": num_workers,
         "pin_memory": True,
-        "shuffle": True,
+        "shuffle": mode == "train",
     }
     if num_workers > 0:
         loader_kwargs["persistent_workers"] = True

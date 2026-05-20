@@ -68,4 +68,13 @@ def build_dataloader(cfg, dataset_py="lerobot_datasets_oxe"): # TODO now here on
     elif dataset_py == "bitcoin_datasets":
         from starVLA.dataloader.bitcoin_datasets import build_bitcoin_dataloader
 
-        return build_bitcoin_dataloader(cfg)
+        return build_bitcoin_dataloader(cfg, mode="train")
+
+
+def build_val_dataloader(cfg, dataset_py="lerobot_datasets"):
+    """Return a validation DataLoader, or None if the dataset type doesn't support it."""
+    if dataset_py == "bitcoin_datasets":
+        from starVLA.dataloader.bitcoin_datasets import build_bitcoin_dataloader
+
+        return build_bitcoin_dataloader(cfg, mode="validation")
+    return None
