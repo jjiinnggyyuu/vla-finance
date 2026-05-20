@@ -170,27 +170,7 @@ class BitcoinOhlcDataset(Dataset):
         return _safe_log_ratio(prices, last_close)
 
     def _format_text(self, past: list[dict]) -> str:
-        rows = past[-self.max_text_candles :] if self.max_text_candles else past
-        parts = [
-            f"Predict the next {self.prediction_horizon} hourly BTC OHLC candles from the chart and the following past OHLCVA values.",
-            "Columns: t,open,high,low,close,volume,amount.",
-        ]
-        fmt = f"{{:.{self.text_precision}f}}"
-        for offset, row in enumerate(rows, start=-len(rows) + 1):
-            parts.append(
-                ",".join(
-                    [
-                        f"t{offset}",
-                        fmt.format(row["open"]),
-                        fmt.format(row["high"]),
-                        fmt.format(row["low"]),
-                        fmt.format(row["close"]),
-                        fmt.format(row["volume"]),
-                        fmt.format(row["amount"]),
-                    ]
-                )
-            )
-        return "\n".join(parts)
+        return f"Predict the next {self.prediction_horizon} hourly BTC OHLC candles from the chart."
 
     def _render_chart(self, past: list[dict]) -> Image.Image:
         width, height = self.image_size
