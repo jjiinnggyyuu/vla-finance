@@ -65,3 +65,7 @@ def build_dataloader(cfg, dataset_py="lerobot_datasets_oxe"): # TODO now here on
         vlm_train_dataloader = vlm_data_module["train_dataloader"]
         
         return vlm_train_dataloader
+    elif dataset_py == "bitcoin_datasets":
+        from starVLA.dataloader.bitcoin_datasets import build_bitcoin_dataloader
+
+        return build_bitcoin_dataloader(cfg)
