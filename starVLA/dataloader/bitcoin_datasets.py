@@ -163,6 +163,8 @@ class BitcoinOhlcDataset(Dataset):
             "lang": text,
             "action": action,
             "last_close": np.array(last_close, dtype=np.float32),
+            "base_timestamp": past[-1]["timestamp"],        # 마지막 입력 캔들 시각 (t0)
+            "future_timestamps": [r["timestamp"] for r in future],  # 예측 대상 시각 12개
         }
 
     def _make_target(self, future: list[dict], last_close: float) -> np.ndarray:
