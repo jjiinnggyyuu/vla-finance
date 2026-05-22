@@ -96,7 +96,7 @@ def main() -> None:
 
     model = build_framework(cfg)
     state_dict = load_state_dict(args.ckpt)
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    missing, unexpected = model.action_model.load_state_dict(state_dict, strict=False)
     print(f"Loaded checkpoint: {args.ckpt}")
     print(f"Missing keys: {len(missing)}  Unexpected keys: {len(unexpected)}")
 

@@ -252,13 +252,14 @@ class VLATrainer(TrainerUtils):
             save_format = getattr(self.config.trainer, "save_format", "pt")
             checkpoint_path = os.path.join(self.checkpoint_dir, f"steps_{self.completed_steps}")
 
-            state_dict = self.accelerator.get_state_dict(self.model)
+            action_model = self.accelerator.unwrap_model(self.model).action_model
+            state_dict = action_model.state_dict()
             if save_format == "safetensors":
                 from safetensors.torch import save_file
 
-                save_file(state_dict, checkpoint_path + "_model.safetensors")
+                save_file(state_dict, checkpoint_path + "_action_model.safetensors")
             elif save_format == "pt":
-                torch.save(state_dict, checkpoint_path + "_pytorch_model.pt")
+                torch.save(state_dict, checkpoint_path + "_action_model.pt")
             else:
                 raise ValueError(f"Unsupported save_format `{save_format}`. Expected `pt` or `safetensors`.")
 
