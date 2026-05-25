@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 export NCCL_BLOCKING_WAIT=1
 export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_TIMEOUT=10000
@@ -14,7 +15,7 @@ bitcoin_data_root=${bitcoin_data_root:-.}
 bitcoin_csv_file=${bitcoin_csv_file:-btc_1h.csv}
 run_root_dir=${run_root_dir:-./playground/Checkpoints}
 run_id=${run_id:-bitcoin_qwengroot_ohlc12}
-num_processes=${NUM_PROCESSES:-1}
+num_processes=${NUM_PROCESSES:-4}
 
 output_dir=${run_root_dir}/${run_id}
 mkdir -p "${output_dir}"
