@@ -32,4 +32,5 @@ accelerate launch \
   --datasets.vla_data.csv_file "${bitcoin_csv_file}" \
   --trainer.freeze_modules "${freeze_module_list}" \
   --run_root_dir "${run_root_dir}" \
-  --run_id "${run_id}"
+  --run_id "${run_id}" \
+  --trainer.is_resume true
