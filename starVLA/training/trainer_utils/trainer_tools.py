@@ -507,8 +507,8 @@ class TrainerUtils:
 
         # Find all checkpoints matching the naming convention, supports .pt and .safetensors
         checkpoints = [
-            f for f in os.listdir(checkpoint_dir) 
-            if re.match(r"steps_(\d+)_(?:pytorch_model\.pt|model\.safetensors)$", f)
+            f for f in os.listdir(checkpoint_dir)
+            if re.match(r"steps_(\d+)_action_model\.(?:pt|safetensors)$", f)
             and os.path.isfile(os.path.join(checkpoint_dir, f))  # ensure it is a file
         ]
 
@@ -519,7 +519,7 @@ class TrainerUtils:
         # Extract step numbers and sort
         try:
             checkpoints_with_steps = [
-                (ckpt, int(re.search(r"steps_(\d+)_(?:pytorch_model\.pt|model\.safetensors)$", ckpt).group(1)))
+                (ckpt, int(re.search(r"steps_(\d+)_action_model\.(?:pt|safetensors)$", ckpt).group(1)))
                 for ckpt in checkpoints
             ]
         except AttributeError as e:
