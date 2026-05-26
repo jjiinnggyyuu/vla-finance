@@ -172,7 +172,30 @@ class BitcoinOhlcDataset(Dataset):
         return _safe_log_ratio(prices, last_close)
 
     def _format_text(self, past: list[dict]) -> str:
-        return f"Predict the next {self.prediction_horizon} hourly BTC OHLC candles from the chart."
+        dt = past[-1]["timestamp_dt"]
+        last_close = past[-1]["close"]
+
+        lines = [
+            "Bitcoin (BTC/USDT) hourly market data.",
+            f"Time: {dt.strftime('%A')} {dt.hour:02d}:00 UTC, {dt.strftime('%B')} {dt.year}",
+            f"Current price: ${last_close:,.2f}",
+            "",
+            "Recent 10 candles (open / high / low / close):",
+        ]
+
+        recent = past[-10:]
+        n = len(recent)
+        for i, row in enumerate(recent):
+            offset = n - i  # counts down: 10, 9, ..., 1
+            lines.append(
+                f"t-{offset:<2}: O={row['open']:.2f} H={row['high']:.2f}"
+                f" L={row['low']:.2f} C={row['close']:.2f}"
+            )
+
+        lines.append("")
+        lines.append(f"Predict the next {self.prediction_horizon} hourly BTC OHLC candles.")
+
+        return "\n".join(lines)
 
     def _render_chart(self, past: list[dict]) -> Image.Image:
         width, height = self.image_size
