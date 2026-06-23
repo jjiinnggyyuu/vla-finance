@@ -176,6 +176,11 @@ class Qwen_GR00T(baseframework):
 
         state = [example["state"] for example in examples] if "state" in examples[0] else None  # [B, 1, state_dim]
 
+        # ETH auxiliary target — only when ALL samples have eth_action (OFT와 동일 규약).
+        eth_actions_raw = None
+        if all("eth_action" in ex for ex in examples):
+            eth_actions_raw = [ex["eth_action"] for ex in examples]
+
         # Step 1: QWenVL input format
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions)
         backbone_attention_mask = qwen_inputs.get("attention_mask", None)
@@ -191,8 +196,12 @@ class Qwen_GR00T(baseframework):
 
         # Step 4: Action Expert Forward and Loss
         with torch.autocast("cuda", dtype=torch.float32):
+            # Keep the flow-matching target in float32. last_hidden is bfloat16, and
+            # inheriting that dtype would quantize the small delta/log-return targets
+            # (~1e-3), blurring the regression target. The action head runs under the
+            # float32 autocast above, so a float32 target adds no dtype conflict.
             actions = torch.tensor(
-                np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype
+                np.array(actions), device=last_hidden.device, dtype=torch.float32
             )  # [B, T_full, action_dim]
             actions_target = actions[:, -self.action_horizon :, :]  # (B, action_horizon, action_dim)
 
@@ -213,9 +222,20 @@ class Qwen_GR00T(baseframework):
                 state = torch.tensor(np.array(state), device=last_hidden.device, dtype=last_hidden.dtype)
                 state_repeated = state.repeat(repeated_diffusion_steps, 1, 1)
 
+            # ETH 보조 타겟도 동일하게 horizon 슬라이스 + diffusion step 복제.
+            eth_target_repeated = None
+            eth_loss_weight = float(getattr(self.config.framework, "eth_loss_weight", 0.0))
+            if eth_loss_weight > 0.0 and eth_actions_raw is not None:
+                eth_tensor = torch.tensor(
+                    np.array(eth_actions_raw), device=last_hidden.device, dtype=torch.float32
+                )  # float32 target (same rationale as the BTC target above)
+                eth_target = eth_tensor[:, -self.action_horizon:, :]
+                eth_target_repeated = eth_target.repeat(repeated_diffusion_steps, 1, 1)
+
             action_loss = self.action_model(
                 last_hidden_repeated, actions_target_repeated, state_repeated,
                 encoder_attention_mask=backbone_attention_mask,
+                eth_target=eth_target_repeated,
             )  # (B, chunk_len, action_dim)
 
         return {"action_loss": action_loss}
