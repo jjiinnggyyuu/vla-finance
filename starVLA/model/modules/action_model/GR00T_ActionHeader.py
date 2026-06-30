@@ -279,6 +279,19 @@ class FlowmatchingActionHead(nn.Module):
             output_dim=self.action_dim,
         )
 
+        # ── Read-off aux heads (v14-style) ────────────────────────────────
+        #   num_readoff_assets > 0 → BTC is diffusion-generated (action_decoder)
+        #   while each aux asset (ETH, XRP, ...) gets its own MLP that regresses
+        #   OHLC directly from the DiT output (L1), used only as a regulariser
+        #   and never run at inference. Zero in the default action-vector mode.
+        self.num_readoff_assets = int(getattr(config, "num_readoff_assets", 0))
+        if self.num_readoff_assets > 0:
+            self.readoff_decoders = nn.ModuleList([
+                MLP(input_dim=self.model.config.output_dim,
+                    hidden_dim=self.hidden_size, output_dim=4)
+                for _ in range(self.num_readoff_assets)
+            ])
+
         # ── Per-asset loss weights (BTC-priority) ─────────────────────────
         #   `asset_weights` (one per asset, e.g. [0.6, 0.2, 0.2]) is expanded to
         #   a per-channel vector (each asset spans OHLC=4 channels) and applied
@@ -335,11 +348,14 @@ class FlowmatchingActionHead(nn.Module):
 
     def forward(
         self, vl_embs: torch.Tensor, actions: torch.Tensor, state: torch.Tensor = None,
-        encoder_attention_mask=None,
+        encoder_attention_mask=None, readoff_targets: torch.Tensor = None,
     ):
         """
         vl_embs:  shape (B, seq_length, feature_dim)
-        actions:  shape (B, action_horizon, action_dim=4*N)  — N assets' OHLC concatenated
+        actions:  shape (B, action_horizon, action_dim)  — diffusion target
+                  (BTC OHLC in read-off mode, or all assets in action-vector mode)
+        readoff_targets: shape (B, action_horizon, 4*num_readoff) or None — aux
+                  assets (ETH, XRP, ...) regressed via read-off heads (v14-style).
         """
         device = vl_embs.device
 
@@ -396,6 +412,15 @@ class FlowmatchingActionHead(nn.Module):
         if dct_weight > 0.0:
             pred_action_recon = noise + pred_actions   # velocity → 액션 복원
             loss = loss + self._freq_loss(pred_action_recon, actions)
+
+        # ── Read-off aux loss (v14-style): L1 regression of ETH/XRP from the
+        #    DiT output. readoff_weight = framework.eth_loss_weight (default 0.5).
+        if self.num_readoff_assets > 0 and readoff_targets is not None:
+            ro_w = float(getattr(self.full_config.framework, "eth_loss_weight", 0.5))
+            for i, dec in enumerate(self.readoff_decoders):
+                pred_i = dec(model_output)[:, -actions.shape[1]:]      # (B, horizon, 4)
+                tgt_i = readoff_targets[:, :, i * 4:(i + 1) * 4]
+                loss = loss + ro_w * F.l1_loss(pred_i, tgt_i)
         return loss
 
     def _freq_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:

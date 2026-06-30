@@ -1,0 +1,210 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1.8cm]{geometry}\usepackage{booktabs}\usepackage[table]{xcolor}\usepackage{amsmath}
+\definecolor{best}{RGB}{0,90,200}\newcommand{\bb}[1]{\textcolor{best}{\textbf{#1}}}
+\begin{document}
+\begin{center}{\Large\textbf{Bitcoin Forecasting --- Full Results}}\end{center}
+\medskip Walk-forward, 0.1\% slippage, BTC-only metrics. \bb{Blue} = best per column. LO = long-only @0.5\%, LS = long-short @0.1\%, B\&H = BTC buy\&hold.
+\section*{Part A.1 --- Crypto, 6-fold average (2020--2025)}
+\begin{table}[h]\centering
+\caption{Directional accuracy (DA) --- 6-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & \bb{0.509$_{\pm.029}$} & \bb{0.517$_{\pm.034}$} & \bb{0.527$_{\pm.028}$} & \bb{0.525$_{\pm.048}$} \\
+v15\_btc & 0.507$_{\pm.019}$ & 0.511$_{\pm.032}$ & 0.517$_{\pm.020}$ & 0.517$_{\pm.023}$ \\
+v15\_multi & 0.505$_{\pm.014}$ & 0.515$_{\pm.021}$ & 0.512$_{\pm.017}$ & 0.515$_{\pm.043}$ \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Long\_ns (long ratio, 0.5 = balanced) --- 6-fold avg. \emph{Not bolded (closer to 0.5 is better).}}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & \bb{0.564$_{\pm.246}$} & 0.578$_{\pm.296}$ & 0.570$_{\pm.343}$ & 0.565$_{\pm.393}$ \\
+v15\_btc & 0.522$_{\pm.111}$ & 0.516$_{\pm.140}$ & 0.498$_{\pm.178}$ & 0.495$_{\pm.231}$ \\
+v15\_multi & 0.555$_{\pm.089}$ & \bb{0.590$_{\pm.124}$} & \bb{0.616$_{\pm.142}$} & \bb{0.648$_{\pm.177}$} \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LO principal return (\%) --- 6-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -23.0$_{\pm8.0}$ & -4.7$_{\pm12.0}$ & +3.5$_{\pm14.2}$ & \bb{+4.9$_{\pm17.1}$} \\
+v15\_btc & \bb{-3.3$_{\pm5.7}$} & \bb{+1.1$_{\pm12.6}$} & \bb{+4.0$_{\pm11.6}$} & +3.5$_{\pm11.3}$ \\
+v15\_multi & -5.3$_{\pm3.5}$ & -4.6$_{\pm3.6}$ & -2.6$_{\pm7.0}$ & +3.1$_{\pm14.2}$ \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LO excess return AER (\%) --- 6-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -30.1$_{\pm19.7}$ & -11.7$_{\pm9.9}$ & -3.7$_{\pm6.7}$ & \bb{-2.2$_{\pm3.9}$} \\
+v15\_btc & \bb{-10.4$_{\pm16.0}$} & \bb{-5.9$_{\pm7.1}$} & \bb{-3.2$_{\pm8.2}$} & -3.5$_{\pm8.9}$ \\
+v15\_multi & -12.4$_{\pm17.2}$ & -11.6$_{\pm14.8}$ & -9.8$_{\pm12.3}$ & -3.9$_{\pm6.0}$ \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LS principal return (\%) --- 6-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -43.8$_{\pm11.1}$ & \bb{-12.7$_{\pm14.4}$} & \bb{+0.7$_{\pm15.4}$} & \bb{+2.6$_{\pm18.2}$} \\
+v15\_btc & \bb{-32.3$_{\pm11.6}$} & -13.9$_{\pm16.7}$ & -3.1$_{\pm11.0}$ & +0.3$_{\pm8.6}$ \\
+v15\_multi & -37.6$_{\pm5.0}$ & -16.2$_{\pm8.8}$ & -5.7$_{\pm8.7}$ & -0.3$_{\pm12.3}$ \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{MDD (\%) --- 6-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -45.7$_{\pm9.9}$ & -20.4$_{\pm5.3}$ & \bb{-9.9$_{\pm4.2}$} & -9.6$_{\pm3.0}$ \\
+v15\_btc & \bb{-33.5$_{\pm9.6}$} & -19.9$_{\pm8.1}$ & -10.3$_{\pm4.8}$ & \bb{-6.3$_{\pm1.9}$} \\
+v15\_multi & -39.0$_{\pm4.3}$ & \bb{-19.8$_{\pm4.6}$} & -11.2$_{\pm2.2}$ & -8.2$_{\pm2.0}$ \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{BTC buy\&hold (\%) --- 6-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & \bb{+7.1$_{\pm18.6}$} & \bb{+7.0$_{\pm18.2}$} & \bb{+7.2$_{\pm18.9}$} & \bb{+7.0$_{\pm19.7}$} \\
+v15\_btc & +7.1$_{\pm18.6}$ & +7.0$_{\pm18.2}$ & +7.2$_{\pm18.9}$ & +7.0$_{\pm19.7}$ \\
+v15\_multi & +7.1$_{\pm18.6}$ & +7.0$_{\pm18.2}$ & +7.2$_{\pm18.9}$ & +7.0$_{\pm19.7}$ \\
+\bottomrule\end{tabular}\end{table}
+\paragraph{Part A.1 --- what it says.} Over the full walk-forward, DA stays at $0.51$--$0.52$ for all variants. \textbf{v14} edges out on DA but is the most regime-biased (Long\_ns~$0.57$); \textbf{normalisation (v15\_btc) gives the most balanced Long\_ns ($\approx0.50$) and the only positive return (LO $+4.0\%$ at $k{=}6$).} Returns are strongly negative at $k{=}1$ (slippage from over-trading) and recover toward $k{=}6$--$12$. No variant beats B\&H ($+7.2\%$).
+\newpage\section*{Part A.2 --- Crypto, fold6 only (2025; incl.\ Kronos)}
+\begin{table}[h]\centering
+\caption{Directional accuracy (DA) --- fold6 (2025).}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & 0.482 & 0.475 & 0.482 & 0.489 \\
+v15\_btc & 0.495 & 0.519 & 0.489 & 0.495 \\
+v15\_multi & 0.484 & 0.478 & 0.515 & 0.493 \\
+Kronos & \bb{0.505} & \bb{0.538} & \bb{0.534} & \bb{0.559} \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Long\_ns --- fold6.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & 0.285 & 0.196 & 0.121 & 0.046 \\
+v15\_btc & 0.358 & 0.345 & 0.305 & 0.260 \\
+v15\_multi & \bb{0.534} & \bb{0.560} & \bb{0.573} & \bb{0.590} \\
+Kronos & 0.384 & 0.323 & 0.280 & 0.251 \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LO principal return (\%) --- fold6.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -13.9 & -8.4 & -2.7 & -1.1 \\
+v15\_btc & -0.8 & -3.3 & -3.2 & -0.7 \\
+v15\_multi & -3.8 & -6.1 & -8.1 & -5.6 \\
+Kronos & \bb{-0.5} & \bb{+0.0} & \bb{+0.7} & \bb{+1.9} \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LO excess return AER (\%) --- fold6.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -8.9 & -3.4 & +2.7 & +4.1 \\
+v15\_btc & +4.2 & +1.7 & +2.1 & +4.6 \\
+v15\_multi & +1.1 & -1.1 & -2.7 & -0.4 \\
+Kronos & \bb{+4.4} & \bb{+5.0} & \bb{+6.1} & \bb{+7.1} \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LS principal return (\%) --- fold6.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -46.2 & -22.7 & -13.2 & -3.6 \\
+v15\_btc & -34.0 & -21.2 & -7.4 & -1.2 \\
+v15\_multi & -35.5 & -21.9 & -8.5 & -7.5 \\
+Kronos & \bb{-25.2} & \bb{-4.4} & \bb{+4.7} & \bb{+11.9} \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{BTC buy\&hold (\%) --- fold6.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & \bb{-5.0} & \bb{-4.9} & \bb{-5.3} & \bb{-5.2} \\
+v15\_btc & -5.0 & -4.9 & -5.3 & -5.2 \\
+v15\_multi & -5.0 & -4.9 & -5.3 & -5.2 \\
+Kronos & -5.0 & -4.9 & -5.3 & -5.2 \\
+\bottomrule\end{tabular}\end{table}
+\paragraph{Part A.2 --- what it says.} fold6 (Dec 2025) is the only window after Kronos's June-2024 pretraining cutoff, so it is the only fair head-to-head. \textbf{Kronos wins on DA at every horizon} (up to $0.559$ at $k{=}12$) and on excess return. Our VLA models drop to DA~$<0.5$ on this single hard month --- they do not yet add value over the pretrained baseline on true future data. (B\&H was $-5.3\%$, so positive AER = lost less than holding.)
+\newpage\section*{Part B --- Macro, 2-fold average (intraday 1h; low power)}
+\begin{table}[h]\centering
+\caption{Macro --- DA, 2-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+baseline (BTC) & \bb{0.520$_{\pm.039}$} & 0.451$_{\pm.010}$ & 0.465$_{\pm.061}$ & \bb{0.428$_{\pm.063}$} \\
+BTC+SPY+TLT (20y) & 0.486$_{\pm.005}$ & 0.472$_{\pm.087}$ & \bb{0.472$_{\pm.087}$} & 0.391$_{\pm.083}$ \\
+BTC+SPY+IEF (10y) & 0.422$_{\pm.018}$ & 0.419$_{\pm.073}$ & 0.363$_{\pm.094}$ & 0.410$_{\pm.064}$ \\
+BTC+SPY+SHY (2y) & 0.478$_{\pm.003}$ & \bb{0.519$_{\pm.057}$} & 0.419$_{\pm.073}$ & 0.405$_{\pm.001}$ \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Macro --- LS@1.0\% principal return (\%), 2-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+baseline (BTC) & -0.2$_{\pm.4}$ & -4.0$_{\pm.8}$ & -2.3$_{\pm1.8}$ & \bb{-2.1$_{\pm3.1}$} \\
+BTC+SPY+TLT (20y) & -3.1$_{\pm1.9}$ & -1.3$_{\pm.2}$ & \bb{-0.5$_{\pm1.9}$} & -4.6$_{\pm3.8}$ \\
+BTC+SPY+IEF (10y) & -3.4$_{\pm1.1}$ & \bb{+0.1$_{\pm.6}$} & -3.4$_{\pm4.2}$ & -4.1$_{\pm4.4}$ \\
+BTC+SPY+SHY (2y) & \bb{+0.2$_{\pm.3}$} & -2.2$_{\pm.3}$ & -2.4$_{\pm2.3}$ & -4.6$_{\pm2.8}$ \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Macro --- LS@1.0\% AER (\%), 2-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+baseline (BTC) & +6.1$_{\pm8.1}$ & +1.6$_{\pm6.1}$ & +3.2$_{\pm4.1}$ & \bb{+2.4$_{\pm2.5}$} \\
+BTC+SPY+TLT (20y) & +3.2$_{\pm5.8}$ & +4.4$_{\pm7.1}$ & \bb{+5.0$_{\pm4.1}$} & -0.1$_{\pm1.8}$ \\
+BTC+SPY+IEF (10y) & +2.9$_{\pm6.6}$ & \bb{+5.7$_{\pm6.2}$} & +2.1$_{\pm1.7}$ & +0.4$_{\pm1.2}$ \\
+BTC+SPY+SHY (2y) & \bb{+6.5$_{\pm8.0}$} & +3.5$_{\pm7.2}$ & +3.1$_{\pm3.7}$ & -0.1$_{\pm2.8}$ \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Macro --- BTC buy\&hold (\%), 2-fold avg.}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+baseline (BTC) & \bb{-6.2$_{\pm7.7}$} & \bb{-5.6$_{\pm6.9}$} & \bb{-5.5$_{\pm5.9}$} & \bb{-4.5$_{\pm5.6}$} \\
+BTC+SPY+TLT (20y) & -6.2$_{\pm7.7}$ & -5.6$_{\pm6.9}$ & -5.5$_{\pm5.9}$ & -4.5$_{\pm5.6}$ \\
+BTC+SPY+IEF (10y) & -6.2$_{\pm7.7}$ & -5.6$_{\pm6.9}$ & -5.5$_{\pm5.9}$ & -4.5$_{\pm5.6}$ \\
+BTC+SPY+SHY (2y) & -6.2$_{\pm7.7}$ & -5.6$_{\pm6.9}$ & -5.5$_{\pm5.9}$ & -4.5$_{\pm5.6}$ \\
+\bottomrule\end{tabular}\end{table}
+\paragraph{Part B --- what it says.} Adding bonds/S\&P does not help BTC prediction at any horizon: the BTC-only baseline ties or beats the macro variants and 10-year bonds (IEF) are worst. All DAs are $\le0.5$ and all principal returns negative. With $\sim$100 test windows total this is under-powered; a 15m/30m re-run is the planned follow-up.
+\end{document}

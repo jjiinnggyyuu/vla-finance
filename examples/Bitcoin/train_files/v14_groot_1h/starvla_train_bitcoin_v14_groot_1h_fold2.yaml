@@ -57,6 +57,7 @@ datasets:
     image_size: [448, 448]
     use_image: false
     target_mode: delta
+    normalize_targets: false
     text_precision: 2
     max_text_candles: 10
     per_device_batch_size: 4

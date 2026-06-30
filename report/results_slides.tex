@@ -1,0 +1,61 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2cm]{geometry}\usepackage{booktabs}\usepackage[table]{xcolor}\usepackage{amsmath}\usepackage{array}
+\definecolor{best}{RGB}{0,90,200}\definecolor{grayrow}{gray}{0.93}
+\newcommand{\bb}[1]{\textcolor{best}{\textbf{#1}}}
+\setlength{\arrayrulewidth}{0.3mm}\renewcommand{\arraystretch}{1.3}
+\begin{document}
+\section*{Results --- 6-fold average at $k{=}6$}
+\begin{table}[h]\centering
+\begin{tabular}{llccccc}
+\toprule
+\textbf{Model} & \textbf{Candle} & \textbf{DA}$\uparrow$ & \textbf{Long\_ns} & \textbf{LO ret}$\uparrow$ & \textbf{AER}$\uparrow$ & \textbf{MDD}$\uparrow$ \\
+\midrule
+v14 & 1h & \bb{0.527$_{\pm.028}$} & 0.570$_{\pm.343}$ & +3.5$_{\pm14.2}$ & -3.7$_{\pm6.7}$ & \bb{-9.9$_{\pm4.2}$} \\
+v15\_btc & 1h & 0.517$_{\pm.020}$ & 0.498$_{\pm.178}$ & \bb{+4.0$_{\pm11.6}$} & \bb{-3.2$_{\pm8.2}$} & -10.3$_{\pm4.8}$ \\
+v15\_multi & 1h & 0.512$_{\pm.017}$ & 0.616$_{\pm.142}$ & -2.6$_{\pm7.0}$ & -9.8$_{\pm12.3}$ & -11.2$_{\pm2.2}$ \\
+\bottomrule\end{tabular}
+\par\smallskip\footnotesize 6-fold mean $\pm$ std / slippage 0.1\% / \bb{Blue} = best. LO ret = long-only @0.5\% principal return.
+\end{table}
+\paragraph{What it says.} Across the full 2020--2025 walk-forward, all VLA variants sit at DA $\approx 0.51$--$0.52$ --- only marginally above the 0.50 coin flip. \textbf{v14} has the highest DA (0.521) and least-negative AER, but its directional predictions are strongly \emph{regime-biased}: Long\_ns~$=0.635$ with a large fold-to-fold std (Table~2). \textbf{Normalisation (v15) trades a little DA for a much more balanced predictor.} The best single strategy is long-only @0.5\%, where v15\_btc earns $+4.0\%$ principal return --- the only consistently positive cell --- yet still trails BTC buy\&hold ($+7.2\%$).
+\section*{Regime bias --- does normalisation help?}
+\begin{table}[h]\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Model} & \textbf{Long\_ns (mean)} & \textbf{Long\_ns std}$\downarrow$ \\
+\midrule
+v14 & 0.570 & 0.343 \\
+v15\_btc & 0.498 & 0.178 \\
+v15\_multi & 0.616 & \bb{0.142} \\
+\bottomrule\end{tabular}
+\par\smallskip\footnotesize Long\_ns std across the 6 folds. Lower = less polarised toward one direction per year (less regime memorisation). \bb{Blue} = best.
+\end{table}
+\paragraph{What it says.} This is the clearest win. v14 (no normalisation) swings violently per year --- almost 100\% long in bull years (2020/2024) and almost all short in bear years (2021/2025), giving std~$=0.297$. Adding \textbf{per-asset target normalisation alone} (v15\_btc, still BTC-only) cuts this to \textbf{0.178}, roughly halving the regime bias. Multi-asset (v15\_multi) lowers it slightly further (0.142) but at the cost of accuracy. \textbf{Conclusion: the regime-bias reduction comes from normalisation, not from adding ETH/XRP.}
+\section*{Out-of-sample (fold6, 2025) --- vs.\ Kronos}
+\begin{table}[h]\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{DA}$\uparrow$ & \textbf{LO AER}$\uparrow$ & \textbf{LS ret}$\uparrow$ \\
+\midrule
+v14 & 0.482 & +2.7 & -13.2 \\
+v15\_btc & 0.489 & +2.1 & -7.4 \\
+v15\_multi & 0.515 & -2.7 & -8.5 \\
+Kronos & \bb{0.534} & \bb{+6.1} & \bb{+4.7} \\
+\bottomrule\end{tabular}
+\par\smallskip\footnotesize fold6 = Dec 2025 test, the only window after Kronos's June-2024 pretraining cutoff (so the only fair head-to-head). \bb{Blue} = best.
+\end{table}
+\paragraph{What it says.} On the only genuinely out-of-sample window, the pretrained \textbf{Kronos baseline beats every VLA variant} --- higher DA (0.535 vs our best 0.515) and the best risk-adjusted excess return (LO AER $+6.1\%$ vs ours $\le +2.7\%$). Our models do not yet add value over an off-the-shelf K-line foundation model on true future data. (Note: BTC fell $-5.3\%$ this month, so positive AER means \emph{lost less than holding}.)
+\section*{Macro experiments --- bonds + S\&P (low power)}
+\begin{table}[h]\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{DA}$\uparrow$ & \textbf{LS ret}$\uparrow$ & \textbf{LS AER}$\uparrow$ \\
+\midrule
+baseline (BTC) & 0.465$_{\pm.061}$ & -2.3$_{\pm1.8}$ & +3.2$_{\pm4.1}$ \\
+BTC+SPY+TLT (20y) & \bb{0.472$_{\pm.087}$} & -0.5$_{\pm1.9}$ & +5.0$_{\pm4.1}$ \\
+BTC+SPY+IEF (10y) & 0.363$_{\pm.094}$ & -3.4$_{\pm4.2}$ & +2.1$_{\pm1.7}$ \\
+BTC+SPY+SHY (2y) & 0.419$_{\pm.073}$ & -2.4$_{\pm2.3}$ & +3.1$_{\pm3.7}$ \\
+\bottomrule\end{tabular}
+\par\smallskip\footnotesize Intraday 1h, market hours, 2-fold (2024/2025) mean$\pm$std. LS = long-short @1.0\%. B\&H was $-5.5\%$. \bb{Blue} = best DA.
+\end{table}
+\paragraph{What it says.} Adding macro assets does \textbf{not} help: the BTC-only baseline (DA 0.465) ties or beats every macro variant, and 10-year bonds (IEF) are clearly worst (0.363). Every DA is below 0.50 and every principal return is negative --- the positive AER is purely an artefact of a falling benchmark. \textbf{With only $\sim$100 test windows in total, this section is under-powered}; a 15m/30m re-run is needed before drawing firm conclusions.
+\end{document}

@@ -1,0 +1,144 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2cm]{geometry}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{amsmath}
+
+\definecolor{best}{RGB}{0,90,200}
+\newcommand{\bb}[1]{\textcolor{best}{\textbf{#1}}}
+
+\begin{document}
+
+\begin{center}
+{\Large\textbf{Bitcoin Forecasting --- Experiment Results}}
+\end{center}
+
+\medskip
+All evaluations use walk-forward folds, $k{=}6$ horizon, and 0.1\% round-trip
+slippage. Our models use a frozen Qwen3-VL-4B backbone with a DiT flow-matching
+head; \textbf{v15} adds per-asset target normalisation. \textbf{Kronos}
+(NeoQuasar/Kronos-base) is a pretrained K-line foundation model, reported only on
+fold6 (2025), the single window after its pretraining cutoff (June 2024).
+
+%==========================================================================
+\section*{Part A --- Crypto experiments (24/7, 6 folds 2020--2025)}
+%==========================================================================
+
+% ----- Table A1 -----
+\begin{table}[h]\centering
+\caption{Directional accuracy and regime bias. \textbf{Long\_ns std} (across the
+6 folds) measures regime memorisation --- lower means less polarised toward one
+direction per year. Normalisation (v15) roughly halves it.}
+\label{tab:dir}
+\begin{tabular}{llccc}
+\toprule
+Model & Period & DA & Long\_ns & Long\_ns std \\
+\midrule
+v14        & 6-fold & \bb{0.5273} & 0.570 & 0.34 \\
+v14        & fold6  & 0.4824 & 0.121 & -- \\
+\midrule
+v15\_btc   & 6-fold & 0.5171 & 0.498 & 0.18 \\
+v15\_btc   & fold6  & 0.4885 & 0.305 & -- \\
+\midrule
+v15\_multi & 6-fold & 0.5120 & 0.616 & \bb{0.14} \\
+v15\_multi & fold6  & 0.5145 & 0.573 & -- \\
+\midrule
+Kronos     & fold6  & \bb{0.5345} & 0.280 & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ----- Table A2 -----
+\begin{table}[h]\centering
+\caption{Trading performance (cumulative return \%). LS = long-short, LO =
+long-only with confidence gate $\theta$; ret = principal return, AER = excess
+return vs BTC buy\&hold (B\&H). On fold6 the B\&H benchmark is negative
+($-5.3\%$), so a positive AER means lost-less-than-holding. All models share
+identical strategies and slippage.}
+\label{tab:strat}
+\begin{tabular}{llccccc}
+\toprule
+ & & LS@0.1\% & \multicolumn{2}{c}{LO@0.5\%} & Magnitude & B\&H \\
+\cmidrule(lr){4-5}
+Model & Period & ret & ret & AER & ret & ret \\
+\midrule
+v14        & 6-fold & +0.7  & +3.5 & -3.7 & +1.3  & +7.2 \\
+v14        & fold6  & -13.2 & -2.7 & +2.7 & -11.0 & -5.3 \\
+\midrule
+v15\_btc   & 6-fold & -3.1  & \bb{+4.0} & -3.2 & -0.8  & +7.2 \\
+v15\_btc   & fold6  & -7.4  & -3.2 & +2.1 & -6.7  & -5.3 \\
+\midrule
+v15\_multi & 6-fold & -5.7  & -2.6 & -9.8 & -4.5  & +7.2 \\
+v15\_multi & fold6  & -8.5  & -8.1 & -2.7 & -8.6  & -5.3 \\
+\midrule
+Kronos     & fold6  & \bb{+4.7} & +0.7 & \bb{+6.1} & +4.3 & -5.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Part A takeaways.}
+(1) Target normalisation halves regime memorisation (Long\_ns std
+$0.34\!\to\!0.18$) without multi-asset inputs.
+(2) Multi-asset (ETH+XRP) does not help --- v15\_btc $>$ v15\_multi on DA and
+returns.
+(3) On the only clean out-of-sample window (fold6, 2025), the pretrained Kronos
+baseline outperforms all our VLA variants on DA and risk-adjusted excess return.
+
+%==========================================================================
+\section*{Part B --- Macro experiments (intraday 1h, market hours, 2 folds)}
+%==========================================================================
+
+US market hours only (BTC resampled to the SPY/TLT 09:30--16:00 ET grid), 2
+walk-forward folds (2024, 2025). Each row co-predicts BTC with the listed macro
+ETFs; metrics are for \textbf{BTC only}. TLT/IEF/SHY are 20y / 10y / 2y US
+Treasury ETFs; SPY is the S\&P500 ETF. \textbf{Caveat:} only $\sim$50 test
+samples per fold $\times$ 2 folds --- low statistical power.
+
+% ----- Table B1 -----
+\begin{table}[h]\centering
+\caption{Directional metrics (BTC, $k{=}6$, 2-fold avg). DA below 0.5 indicates
+the intraday market-hours signal is at or below chance.}
+\label{tab:macro-dir}
+\begin{tabular}{lcc}
+\toprule
+Model & DA & Long\_ns \\
+\midrule
+baseline (BTC)    & 0.4646 & 0.637 \\
+BTC+SPY+TLT (20y) & \bb{0.4720} & 0.486 \\
+BTC+SPY+IEF (10y) & 0.3634 & 0.713 \\
+BTC+SPY+SHY (2y)  & 0.4188 & 0.491 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ----- Table B2 -----
+\begin{table}[h]\centering
+\caption{Trading performance (BTC, cumulative \%, $k{=}6$, 2-fold avg). The B\&H
+benchmark is $-5.5\%$ (BTC fell in both Dec test months), so a positive AER means
+lost-less-than-holding, not a real profit --- every principal return is negative.}
+\label{tab:macro-strat}
+\begin{tabular}{lccccc}
+\toprule
+ & \multicolumn{2}{c}{LS@0.1\%} & \multicolumn{2}{c}{LS@1.0\%} & B\&H \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Model & ret & AER & ret & AER & ret \\
+\midrule
+baseline (BTC)    & -2.7 & +2.8 & -2.3 & +3.2 & -5.5 \\
+BTC+SPY+TLT (20y) & -2.9 & +2.6 & -0.5 & \bb{+5.0} & -5.5 \\
+BTC+SPY+IEF (10y) & -5.1 & +0.5 & -3.4 & +2.1 & -5.5 \\
+BTC+SPY+SHY (2y)  & -4.7 & +0.8 & -2.4 & +3.1 & -5.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Part B takeaways.}
+(1) Adding bonds/S\&P does \emph{not} improve BTC prediction; baseline ($0.465$)
+ties or beats the macro variants, and IEF (10y) is worst ($0.363$).
+(2) All DAs are $<0.5$ and all principal returns are negative; positive AER is
+only an artefact of a falling benchmark.
+(3) With $\sim$100 test samples total, these results are indicative at best --- a
+15m/30m re-run is needed for statistical power.
+
+\end{document}

@@ -1,0 +1,137 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1.8cm]{geometry}\usepackage{booktabs}\usepackage[table]{xcolor}\usepackage{amsmath}
+\definecolor{best}{RGB}{0,90,200}\newcommand{\bb}[1]{\textcolor{best}{\textbf{#1}}}
+\begin{document}
+\begin{center}{\Large\textbf{Bitcoin Forecasting --- Results by horizon}}\end{center}
+\medskip Walk-forward, 0.1\% slippage, BTC only. Best per column in \bb{blue bold}. LO = long-only @0.5\%, LS = long-short. B\&H = BTC buy\&hold.
+\section*{Part A.1 --- Crypto, 6-fold average (2020--2025)}
+\begin{table}[h]\centering
+\caption{DA --- 6-fold avg.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & \bb{0.5092} & \bb{0.5166} & \bb{0.5273} & \bb{0.5248} \\
+v15\_btc & 0.5071 & 0.5112 & 0.5171 & 0.5171 \\
+v15\_multi & 0.5051 & 0.5148 & 0.5120 & 0.5153 \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Long\_ns --- 6-fold avg (0.5 = balanced; closer to 0.5 better, not bolded).}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & \bb{0.564} & 0.578 & 0.570 & 0.565 \\
+v15\_btc & 0.522 & 0.516 & 0.498 & 0.495 \\
+v15\_multi & 0.555 & \bb{0.590} & \bb{0.616} & \bb{0.648} \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LO@0.5\% principal return (\%) --- 6-fold avg.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -23.0 & -4.7 & +3.5 & \bb{+4.9} \\
+v15\_btc & \bb{-3.3} & \bb{+1.1} & \bb{+4.0} & +3.5 \\
+v15\_multi & -5.3 & -4.6 & -2.6 & +3.1 \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LO@0.5\% excess return AER (\%) --- 6-fold avg.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -30.1 & -11.7 & -3.7 & \bb{-2.2} \\
+v15\_btc & \bb{-10.4} & \bb{-5.9} & \bb{-3.2} & -3.5 \\
+v15\_multi & -12.4 & -11.6 & -9.8 & -3.9 \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{BTC buy\&hold (\%) --- 6-fold avg.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & \bb{+7.1} & \bb{+7.0} & \bb{+7.2} & \bb{+7.0} \\
+v15\_btc & +7.1 & +7.0 & +7.2 & +7.0 \\
+v15\_multi & +7.1 & +7.0 & +7.2 & +7.0 \\
+\bottomrule\end{tabular}\end{table}
+\section*{Part A.2 --- Crypto, fold6 only (2025, incl. Kronos)}
+\begin{table}[h]\centering
+\caption{DA --- fold6 (2025).}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & 0.4824 & 0.4747 & 0.4824 & 0.4885 \\
+v15\_btc & 0.4946 & 0.5191 & 0.4885 & 0.4946 \\
+v15\_multi & 0.4839 & 0.4778 & 0.5145 & 0.4931 \\
+Kronos & \bb{0.5054} & \bb{0.5375} & \bb{0.5345} & \bb{0.5590} \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Long\_ns --- fold6 (2025).}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & 0.285 & 0.196 & 0.121 & 0.046 \\
+v15\_btc & 0.358 & 0.345 & 0.305 & 0.260 \\
+v15\_multi & \bb{0.534} & \bb{0.560} & \bb{0.573} & \bb{0.590} \\
+Kronos & 0.384 & 0.323 & 0.280 & 0.251 \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LO@0.5\% principal return (\%) --- fold6.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -13.9 & -8.4 & -2.7 & -1.1 \\
+v15\_btc & -0.8 & -3.3 & -3.2 & -0.7 \\
+v15\_multi & -3.8 & -6.1 & -8.1 & -5.6 \\
+Kronos & \bb{-0.5} & \bb{+0.0} & \bb{+0.7} & \bb{+1.9} \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{LO@0.5\% excess return AER (\%) --- fold6.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+v14 & -8.9 & -3.4 & +2.7 & +4.1 \\
+v15\_btc & +4.2 & +1.7 & +2.1 & +4.6 \\
+v15\_multi & +1.1 & -1.1 & -2.7 & -0.4 \\
+Kronos & \bb{+4.4} & \bb{+5.0} & \bb{+6.1} & \bb{+7.1} \\
+\bottomrule\end{tabular}\end{table}
+\section*{Part B --- Macro, 2-fold average (intraday 1h; low power)}
+\begin{table}[h]\centering
+\caption{Macro --- DA, 2-fold avg.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+baseline (BTC) & \bb{0.5200} & 0.4511 & 0.4646 & \bb{0.4285} \\
+BTC+SPY+TLT (20y) & 0.4861 & 0.4720 & \bb{0.4720} & 0.3911 \\
+BTC+SPY+IEF (10y) & 0.4223 & 0.4188 & 0.3634 & 0.4104 \\
+BTC+SPY+SHY (2y) & 0.4777 & \bb{0.5189} & 0.4188 & 0.4053 \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Macro --- LS@1.0\% principal return (\%), 2-fold avg.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+baseline (BTC) & -0.2 & -4.0 & -2.3 & \bb{-2.1} \\
+BTC+SPY+TLT (20y) & -3.1 & -1.3 & \bb{-0.5} & -4.6 \\
+BTC+SPY+IEF (10y) & -3.4 & \bb{+0.1} & -3.4 & -4.1 \\
+BTC+SPY+SHY (2y) & \bb{+0.2} & -2.2 & -2.4 & -4.6 \\
+\bottomrule\end{tabular}\end{table}
+\begin{table}[h]\centering
+\caption{Macro --- LS@1.0\% AER (\%), 2-fold avg.}
+\begin{tabular}{lcccc}
+\toprule
+Model & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\
+\midrule
+baseline (BTC) & +6.1 & +1.6 & +3.2 & \bb{+2.4} \\
+BTC+SPY+TLT (20y) & +3.2 & +4.4 & \bb{+5.0} & -0.1 \\
+BTC+SPY+IEF (10y) & +2.9 & \bb{+5.7} & +2.1 & +0.4 \\
+BTC+SPY+SHY (2y) & \bb{+6.5} & +3.5 & +3.1 & -0.1 \\
+\bottomrule\end{tabular}\end{table}
+\end{document}
