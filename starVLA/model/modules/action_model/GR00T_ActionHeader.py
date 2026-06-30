@@ -6,6 +6,7 @@
 
 from dataclasses import dataclass, field
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -268,10 +269,33 @@ class FlowmatchingActionHead(nn.Module):
             action_dim=config.action_dim,
             hidden_size=self.input_embedding_dim,
         )
+        # The action vector concatenates N assets' OHLC: action_dim = 4 * N.
+        # All assets are co-predicted through the same diffusion process (no
+        # separate read-off head). The legacy single-asset ETH read-off decoder
+        # has been removed — correlated assets now live inside `action_dim`.
         self.action_decoder = MLP(
             input_dim=self.model.config.output_dim,
             hidden_dim=self.hidden_size,
             output_dim=self.action_dim,
+        )
+
+        # ── Per-asset loss weights (BTC-priority) ─────────────────────────
+        #   `asset_weights` (one per asset, e.g. [0.6, 0.2, 0.2]) is expanded to
+        #   a per-channel vector (each asset spans OHLC=4 channels) and applied
+        #   to BOTH the flow-matching MSE and the DCT loss so BTC stays the
+        #   priority in time- and frequency-domain alike. Normalised to mean 1
+        #   so the overall loss scale is invariant to the absolute weights
+        #   (only the relative weighting matters). Defaults to equal weights.
+        asset_weights = list(getattr(config, "asset_weights", None) or [])
+        ohlc = 4
+        n_assets = self.action_dim // ohlc
+        if asset_weights and len(asset_weights) == n_assets:
+            ch = np.repeat(np.asarray(asset_weights, dtype=np.float32), ohlc)
+        else:
+            ch = np.ones(self.action_dim, dtype=np.float32)
+        ch = ch * (self.action_dim / float(ch.sum()))  # normalise → mean 1.0
+        self.register_buffer(
+            "asset_channel_weights", torch.tensor(ch, dtype=torch.float32).view(1, 1, -1)
         )
 
         # ------------------------------------------------------------------
@@ -310,11 +334,12 @@ class FlowmatchingActionHead(nn.Module):
         return BatchFeature(data=batch)
 
     def forward(
-        self, vl_embs: torch.Tensor, actions: torch.Tensor, state: torch.Tensor = None, encoder_attention_mask=None
+        self, vl_embs: torch.Tensor, actions: torch.Tensor, state: torch.Tensor = None,
+        encoder_attention_mask=None,
     ):
         """
-        vl_embs: shape (B, seq_length, feature_dim)
-        actions: shape (B, action_horizon, action_dim)
+        vl_embs:  shape (B, seq_length, feature_dim)
+        actions:  shape (B, action_horizon, action_dim=4*N)  — N assets' OHLC concatenated
         """
         device = vl_embs.device
 
@@ -358,9 +383,78 @@ class FlowmatchingActionHead(nn.Module):
         pred = self.action_decoder(model_output)
         pred_actions = pred[:, -actions.shape[1] :]
 
-        # Slice out only the action portion of pred and target.
-        loss = ((pred_actions - velocity) ** 2).mean()
+        # Flow-matching loss over all assets, weighted per channel (BTC-priority).
+        aw = self.asset_channel_weights.to(pred_actions.dtype)
+        loss = (((pred_actions - velocity) ** 2) * aw).mean()
+
+        # ── DCT (frequency-domain) auxiliary loss (VLANeXt-style) ──────────
+        #   디퓨전은 velocity를 예측하므로, 깨끗한 액션(x_start)을 복원해서 적용.
+        #   우리 규약: noisy = (1-t)*noise + t*actions, velocity = actions - noise.
+        #   따라서 예측 액션 = noise + pred  (pred ≈ velocity 이므로).
+        #   자산 가중(aw)을 MSE와 동일하게 곱해 BTC 우선을 주파수 도메인에도 적용.
+        dct_weight = float(getattr(self.full_config.framework, "dct_loss_weight", 0.0))
+        if dct_weight > 0.0:
+            pred_action_recon = noise + pred_actions   # velocity → 액션 복원
+            loss = loss + self._freq_loss(pred_action_recon, actions)
         return loss
+
+    def _freq_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """DCT-II 주파수 도메인 보조 손실 (VLANeXt 구현, OFT와 동일).
+
+        시간축으로 DCT-II 변환 후 저주파/고주파에 다른 가중치를 줘 MSE/MAE/Cosine.
+        dct_loss_weight=0이면 0 텐서 반환. 반환값은 weight가 이미 곱해진 상태.
+        """
+        fw = self.full_config.framework
+        weight = float(getattr(fw, "dct_loss_weight", 0.0))
+        if weight == 0.0:
+            return torch.tensor(0.0, device=pred.device, dtype=pred.dtype)
+
+        pred = pred.float()
+        target = target.float()
+        B, T, D = pred.shape
+
+        if (not hasattr(self, "_dct_matrix")
+                or self._dct_matrix.shape[0] != T
+                or self._dct_matrix.device != pred.device):
+            n = torch.arange(T, device=pred.device).float()
+            k = torch.arange(T, device=pred.device).float()
+            dct_m = torch.cos((np.pi / T) * (n + 0.5).unsqueeze(0) * k.unsqueeze(1))
+            dct_m[0, :]  *= 1.0 / np.sqrt(T)
+            dct_m[1:, :] *= np.sqrt(2.0 / T)
+            self._dct_matrix = dct_m
+
+        low_w    = float(getattr(fw, "dct_low_freq_weight",  1.0))
+        high_w   = float(getattr(fw, "dct_high_freq_weight", 3.0))
+        split    = float(getattr(fw, "dct_freq_split",       0.5))
+        sim_type = str(getattr(fw,   "dct_similarity_type",  "mse"))
+
+        split_idx = max(1, int(T * split))
+        freq_weights = torch.ones(T, device=pred.device, dtype=pred.dtype)
+        freq_weights[:split_idx] = low_w
+        freq_weights[split_idx:] = high_w
+        freq_weights = freq_weights.view(1, T, 1)
+
+        # Combine frequency weights (1,T,1) with per-asset channel weights (1,1,D)
+        # so DCT honours both the low/high-freq split and the BTC-priority weighting.
+        aw = self.asset_channel_weights.to(pred.dtype)   # (1,1,D)
+        weights = freq_weights * aw                       # broadcast → (1,T,D)
+
+        pred_dct   = torch.matmul(pred.permute(0, 2, 1),   self._dct_matrix.t()).permute(0, 2, 1)
+        target_dct = torch.matmul(target.permute(0, 2, 1), self._dct_matrix.t()).permute(0, 2, 1)
+
+        if sim_type == "mse":
+            loss = ((pred_dct - target_dct) ** 2 * weights).mean()
+        elif sim_type == "mae":
+            loss = ((pred_dct - target_dct).abs() * weights).mean()
+        elif sim_type == "cosine":
+            pred_norm   = F.normalize(pred_dct,   dim=-1)
+            target_norm = F.normalize(target_dct, dim=-1)
+            cos_dist = 1.0 - (pred_norm * target_norm).sum(dim=-1, keepdim=True)
+            loss = (cos_dist * freq_weights).mean()
+        else:
+            raise ValueError(f"Unknown dct_similarity_type: {sim_type!r}")
+
+        return weight * loss
 
     @torch.no_grad()
     def predict_action(

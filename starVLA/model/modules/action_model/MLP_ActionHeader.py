@@ -88,6 +88,79 @@ class L1RegressionActionHead(nn.Module):
         return self.predict_action(actions_hidden_states)
 
 
+class SharedTrunkDualHeadActionModel(nn.Module):
+    """
+    Shared-trunk MLP with two output heads (e.g. BTC + ETH).
+
+    Architecture:
+        LayerNorm → fc1 → ReLU → ResBlock×N   ← shared trunk
+              ↙                          ↘
+        LayerNorm + fc_main          LayerNorm + fc_aux
+        main output (B,T,action_dim)  aux output (B,T,action_dim)
+
+    During inference only the main head is used; the aux head is only
+    active during training to propagate gradients through the shared trunk.
+    """
+
+    def __init__(self, input_dim: int, hidden_dim: int, action_dim: int, num_blocks: int = 2):
+        super().__init__()
+        self.action_dim = action_dim
+
+        # ── Shared trunk ──────────────────────────────────────────────────
+        self.layer_norm1 = nn.LayerNorm(input_dim)
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.resblocks = nn.ModuleList(
+            [MLPResNetBlock(dim=hidden_dim) for _ in range(num_blocks)]
+        )
+
+        # ── Main head (BTC) ───────────────────────────────────────────────
+        self.main_norm = nn.LayerNorm(hidden_dim)
+        self.main_fc   = nn.Linear(hidden_dim, action_dim)
+
+        # ── Auxiliary head (ETH) ──────────────────────────────────────────
+        self.aux_norm = nn.LayerNorm(hidden_dim)
+        self.aux_fc   = nn.Linear(hidden_dim, action_dim)
+
+    def _trunk(self, x):
+        """x: (B*T, input_dim) → (B*T, hidden_dim)"""
+        x = self.layer_norm1(x)
+        x = self.fc1(x)
+        x = self.relu(x)
+        for block in self.resblocks:
+            x = block(x)
+        return x
+
+    def predict_action(self, actions_hidden_states):
+        """
+        Inference: main head only.
+        actions_hidden_states: (B, T, input_dim)
+        Returns: (B, T, action_dim)
+        """
+        B, T, H = actions_hidden_states.shape
+        x = actions_hidden_states.reshape(B * T, H)
+        x = self._trunk(x)
+        out = self.main_norm(x)
+        out = self.main_fc(out)
+        return out.view(B, T, self.action_dim)
+
+    def forward_dual(self, actions_hidden_states):
+        """
+        Training: returns (main_pred, aux_pred) both (B, T, action_dim).
+        Gradients flow through the shared trunk from both heads.
+        """
+        B, T, H = actions_hidden_states.shape
+        x = actions_hidden_states.reshape(B * T, H)
+        trunk_out = self._trunk(x)
+
+        main_out = self.main_fc(self.main_norm(trunk_out)).view(B, T, self.action_dim)
+        aux_out  = self.aux_fc(self.aux_norm(trunk_out)).view(B, T, self.action_dim)
+        return main_out, aux_out
+
+    def forward(self, actions_hidden_states):
+        return self.predict_action(actions_hidden_states)
+
+
 def get_action_model(config=None):
     """
     Factory: build ActionModel from global framework config.
@@ -105,11 +178,20 @@ def get_action_model(config=None):
     # by share_tools.apply_config_compat.
     action_horizon = int(action_model_cfg.action_horizon)
 
-    action_model = L1RegressionActionHead(
-        input_dim=action_hidden_dim,
-        hidden_dim=action_hidden_dim * 2,
-        action_dim=action_dim,
-        NUM_ACTIONS_CHUNK=action_horizon,
-    )
+    eth_loss_weight = float(getattr(config.framework, "eth_loss_weight", 0.0))
+
+    if eth_loss_weight > 0.0:
+        action_model = SharedTrunkDualHeadActionModel(
+            input_dim=action_hidden_dim,
+            hidden_dim=action_hidden_dim * 2,
+            action_dim=action_dim,
+        )
+    else:
+        action_model = L1RegressionActionHead(
+            input_dim=action_hidden_dim,
+            hidden_dim=action_hidden_dim * 2,
+            action_dim=action_dim,
+            NUM_ACTIONS_CHUNK=action_horizon,
+        )
 
     return action_model

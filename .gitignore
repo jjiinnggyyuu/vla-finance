@@ -262,3 +262,14 @@ examples/SimplerEnv/eval_files/auto_eval_scripts/auto_collect_results/schedule_w
 examples/SimplerEnv/eval_files/auto_eval_scripts/auto_collect_results/summarize_widowx_all.sh
 examples/SimplerEnv/eval_files/auto_eval_scripts/auto_collect_results/schedule_widowx_eval.sh
 starVLA/model/framework/VLM4A/QwenGR00T_v2.py
+
+# Reference repos (Kronos 등 비교/참고용, 추적 안 함)
+reference/
+
+# Bitcoin 데이터 + wandb (대용량, 추적 안 함)
+crypto_data/
+wandb/
+
+# Bitcoin 데이터 + wandb (대용량, 추적 안 함)
+crypto_data/
+wandb/

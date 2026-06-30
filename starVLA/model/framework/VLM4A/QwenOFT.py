@@ -26,6 +26,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image
 
 from deployment.model_server.tools.image_tools import to_pil_preserve
@@ -166,6 +167,13 @@ class Qwenvl_OFT(baseframework):
             [example["state"] for example in examples] if "state" in examples[0] else None
         )  # List[ndarray (1, state_dim)] or None
 
+        # ETH auxiliary target — only used when ALL samples in the batch have eth_action.
+        # Individual samples may lack eth_action if ETH timestamps don't align, so we
+        # require the full batch to be consistent before entering the dual-head path.
+        eth_actions_raw = None
+        if all("eth_action" in ex for ex in examples):
+            eth_actions_raw = [ex["eth_action"] for ex in examples]
+
         # Optionally prepend discretised proprioceptive state tokens to each instruction (π₀.5 style).
         instructions = (
             self.add_discretized_state_to_instruction(instructions, state) if state is not None else instructions
@@ -175,7 +183,9 @@ class Qwenvl_OFT(baseframework):
         action_tokens = (
             self.action_token * self.chunk_len
         )  # can't add " " between two tokens, otherwise will be tokenized to multiple tokens
-        prompt_suffix = f" Please predict the next {self.chunk_len} robot actions: <action>{action_tokens}<action>."
+        action_prompt = getattr(self.config.framework, "action_prompt", None) or \
+            f"Please predict the next {self.chunk_len} OHLC candles"
+        prompt_suffix = f" {action_prompt}: <action>{action_tokens}<action>."
         instructions = [instruction + prompt_suffix for instruction in instructions]
 
         # Step 1: QWenVL input format
@@ -197,18 +207,46 @@ class Qwenvl_OFT(baseframework):
             action_queries = self._gather_action_token_embeddings(
                 last_hidden, input_ids, action_token_id=self.action_token_id
             )  # [B, chunk_len, H]
-            pred_actions = self.action_model.predict_action(action_queries)  # (B, chunk_len, action_dim)
 
             # Label alignment: take the last chunk_len segment
-            actions = torch.tensor(
-                np.array(actions), device=pred_actions.device, dtype=pred_actions.dtype
-            )  # [B, T_full, action_dim]
-            actions_target = actions[:, -self.action_horizon :, :]  # (B, action_horizon, action_dim)
+            actions_tensor = torch.tensor(
+                np.array(actions), device=action_queries.device, dtype=action_queries.dtype
+            )
+            actions_target = actions_tensor[:, -self.action_horizon:, :]  # (B, T, action_dim)
 
-            # Compute L1 loss
-            action_loss = self.l1_loss(pred_actions, actions_target)
+            # Dual-head path (ETH auxiliary task)
+            eth_loss_weight = float(getattr(self.config.framework, "eth_loss_weight", 0.0))
+            use_dual = (
+                eth_loss_weight > 0.0
+                and eth_actions_raw is not None
+                and hasattr(self.action_model, "forward_dual")
+            )
 
-        return {"action_loss": action_loss}
+            if use_dual:
+                pred_btc, pred_eth = self.action_model.forward_dual(action_queries)
+                eth_tensor = torch.tensor(
+                    np.array(eth_actions_raw), device=action_queries.device, dtype=action_queries.dtype
+                )
+                eth_target = eth_tensor[:, -self.action_horizon:, :]
+                l1_loss  = self.l1_loss(pred_btc, actions_target)
+                eth_loss = self.l1_loss(pred_eth, eth_target)
+                pred_actions = pred_btc
+            else:
+                pred_actions = self.action_model.predict_action(action_queries)
+                l1_loss  = self.l1_loss(pred_actions, actions_target)
+                eth_loss = torch.tensor(0.0, device=action_queries.device, dtype=action_queries.dtype)
+
+            # Frequency domain auxiliary loss (DCT)
+            freq_loss = self._freq_loss(pred_actions, actions_target)
+
+            action_loss = l1_loss + freq_loss + eth_loss_weight * eth_loss
+
+        return {
+            "action_loss": action_loss,
+            "l1_loss":     l1_loss,
+            "dct_loss":    freq_loss,
+            "eth_loss":    eth_loss,
+        }
 
     @torch.inference_mode()
     def predict_action(
@@ -248,7 +286,9 @@ class Qwenvl_OFT(baseframework):
         action_tokens = (
             self.action_token * self.chunk_len
         )  # can't add " " between two tokens, otherwise will be tokenized to multiple tokens
-        prompt_suffix = f" Please predict the next {self.chunk_len} robot actions: <action>{action_tokens}<action>."
+        action_prompt = getattr(self.config.framework, "action_prompt", None) or \
+            f"Please predict the next {self.chunk_len} OHLC candles"
+        prompt_suffix = f" {action_prompt}: <action>{action_tokens}<action>."
         instructions = [instruction + prompt_suffix for instruction in instructions]
 
         # Step 1: QWenVL input format
@@ -274,6 +314,65 @@ class Qwenvl_OFT(baseframework):
 
         normalized_actions = pred_actions.detach().cpu().numpy()
         return {"normalized_actions": normalized_actions}
+
+    def _freq_loss(
+        self,
+        pred: torch.Tensor,   # (B, T, D)
+        target: torch.Tensor, # (B, T, D)
+    ) -> torch.Tensor:
+        """
+        DCT-II frequency domain auxiliary loss (VLANeXt implementation).
+
+        Applies DCT-II transform along the time axis, weights low/high frequency
+        components separately, and computes MSE/MAE/Cosine similarity loss.
+        Returns zero tensor if dct_loss_weight is 0.0 (disabled).
+        """
+        weight = float(getattr(self.config.framework, "dct_loss_weight", 0.0))
+        if weight == 0.0:
+            return torch.tensor(0.0, device=pred.device, dtype=pred.dtype)
+
+        pred   = pred.float()
+        target = target.float()
+        B, T, D = pred.shape
+
+        # Build and cache DCT-II matrix
+        if not hasattr(self, '_dct_matrix') or self._dct_matrix.shape[0] != T or self._dct_matrix.device != pred.device:
+            n = torch.arange(T, device=pred.device).float()
+            k = torch.arange(T, device=pred.device).float()
+            dct_m = torch.cos((np.pi / T) * (n + 0.5).unsqueeze(0) * k.unsqueeze(1))
+            dct_m[0, :]  *= 1.0 / np.sqrt(T)
+            dct_m[1:, :] *= np.sqrt(2.0 / T)
+            self._dct_matrix = dct_m
+
+        # Frequency weights: low vs high frequency
+        low_w    = float(getattr(self.config.framework, "dct_low_freq_weight",  1.0))
+        high_w   = float(getattr(self.config.framework, "dct_high_freq_weight", 3.0))
+        split    = float(getattr(self.config.framework, "dct_freq_split",       0.5))
+        sim_type = str(getattr(self.config.framework,   "dct_similarity_type",  "mse"))
+
+        split_idx = max(1, int(T * split))
+        freq_weights = torch.ones(T, device=pred.device, dtype=pred.dtype)
+        freq_weights[:split_idx] = low_w
+        freq_weights[split_idx:] = high_w
+        freq_weights = freq_weights.view(1, T, 1)
+
+        # Apply DCT-II transform
+        pred_dct   = torch.matmul(pred.permute(0, 2, 1),   self._dct_matrix.t()).permute(0, 2, 1)
+        target_dct = torch.matmul(target.permute(0, 2, 1), self._dct_matrix.t()).permute(0, 2, 1)
+
+        if sim_type == "mse":
+            loss = ((pred_dct - target_dct) ** 2 * freq_weights).mean()
+        elif sim_type == "mae":
+            loss = ((pred_dct - target_dct).abs() * freq_weights).mean()
+        elif sim_type == "cosine":
+            pred_norm   = F.normalize(pred_dct,   dim=-1)
+            target_norm = F.normalize(target_dct, dim=-1)
+            cos_dist = 1.0 - (pred_norm * target_norm).sum(dim=-1, keepdim=True)
+            loss = (cos_dist * freq_weights).mean()
+        else:
+            raise ValueError(f"Unknown dct_similarity_type: {sim_type!r}")
+
+        return weight * loss
 
     def _gather_action_token_embeddings(
         self,

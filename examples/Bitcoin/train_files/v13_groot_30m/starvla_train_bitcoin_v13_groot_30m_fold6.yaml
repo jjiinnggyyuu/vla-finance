@@ -1,0 +1,108 @@
+run_id: v13_groot_30m/fold6
+run_root_dir: playground/Checkpoints
+seed: 42
+wandb_entity: commax2022-korea-university
+wandb_project: starVLA_Bitcoin
+is_debug: false
+version_id: "0.1"
+
+framework:
+  name: QwenGR00T
+  action_prompt: "Output the predicted values"
+  eth_loss_weight: 0.5        # ETH 보조 예측 손실 (DiT 출력에서 회귀, world-model aux)
+  dct_loss_weight: 0.1        # frequency domain loss weight
+  dct_low_freq_weight: 1.0    # 저주파(추세) 가중치
+  dct_high_freq_weight: 3.0   # 고주파(단기변동) 가중치
+  dct_freq_split: 0.5         # 저/고주파 분리점 (0~1)
+  dct_similarity_type: "mse"  # mse / mae / cosine
+  qwenvl:
+    base_vlm: ./playground/Pretrained_models/Qwen3-VL-4B-Instruct
+    attn_implementation: flash_attention_2
+    vl_hidden_dim: 2048
+  action_model:
+    action_model_type: DiT-B
+    hidden_size: 1024
+    add_pos_embed: true
+    max_seq_len: 1024
+    action_dim: 4             # OHLC
+    state_dim: 0              # no robot proprio/state branch
+    action_horizon: 12        # next 12 thirty-minute candles (= 6h)
+    repeated_diffusion_steps: 8
+    noise_beta_alpha: 1.5
+    noise_beta_beta: 1.0
+    noise_s: 0.999
+    num_timestep_buckets: 1000
+    num_inference_timesteps: 4
+    num_target_vision_tokens: 32
+    diffusion_model_cfg:
+      cross_attention_dim: 2048
+      dropout: 0.2
+      final_dropout: true
+      interleave_self_attention: true
+      norm_type: ada_norm
+      num_layers: 16
+      output_dim: 1024
+      positional_embeddings: null
+
+datasets:
+  vla_data:
+    dataset_py: bitcoin_datasets
+    data_root_dir: .
+    csv_file: crypto_data/btc_30m.csv
+    eth_csv_file: crypto_data/eth_30m.csv
+    data_mix: bitcoin_30m_80_to_12
+    input_window: 80
+    prediction_horizon: 12
+    stride: 1
+    image_size: [448, 448]
+    use_image: false
+    target_mode: delta
+    text_precision: 2
+    max_text_candles: 10
+    per_device_batch_size: 4
+    num_workers: 4
+    splits:
+      train:
+        start: "2025-01-01"
+        end: "2025-10-31"
+      validation:
+        start: "2025-11-01"
+        end: "2025-11-30"
+      test:
+        start: "2025-12-01"
+        end: "2025-12-31"
+    columns:
+      timestamp: timestamp
+      open: open
+      high: high
+      low: low
+      close: close
+      volume: volume
+      amount: quote_volume
+
+trainer:
+  max_train_steps: 10000
+  num_warmup_steps: 500
+  save_interval: 1000
+  eval_interval: 100
+  learning_rate:
+    base: 2.5e-05
+    qwen_vl_interface: 1.0e-05
+    action_model: 1.0e-04
+  lr_scheduler_type: cosine_with_min_lr
+  scheduler_specific_kwargs:
+    min_lr: 1.0e-06
+  freeze_modules: 'qwen_vl_interface'
+  loss_scale:
+    vla: 1.0
+  max_grad_norm: 1.0
+  weight_decay: 0.0
+  logging_frequency: 10
+  gradient_clipping: 1.0
+  gradient_accumulation_steps: 4
+  gradient_checkpointing: true
+  optimizer:
+    name: AdamW
+    betas: [0.9, 0.95]
+    eps: 1.0e-08
+    weight_decay: 1.0e-08

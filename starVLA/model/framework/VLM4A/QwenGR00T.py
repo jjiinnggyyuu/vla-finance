@@ -156,6 +156,21 @@ class Qwen_GR00T(baseframework):
             self.qwen_vl_interface.model.config.hidden_size
         )
 
+        # Multi-asset: the action vector concatenates N assets' OHLC, so
+        # action_dim = 4 * num_assets. Per-asset loss weights (BTC-priority) are
+        # read from the asset list and handed to the action head. A missing
+        # `assets` list falls back to single-asset (BTC-only) behaviour.
+        vla = self.config.datasets.vla_data
+        assets = vla.get("assets", None) if hasattr(vla, "get") else getattr(vla, "assets", None)
+        if assets:
+            n_assets = len(assets)
+            weights = [float(a.get("weight", 1.0) if hasattr(a, "get") else getattr(a, "weight", 1.0))
+                       for a in assets]
+        else:
+            n_assets, weights = 1, [1.0]
+        self.config.framework.action_model.action_dim = 4 * n_assets
+        self.config.framework.action_model.asset_weights = weights
+
         self.action_model: FlowmatchingActionHead = get_action_model(config=self.config)
 
         # `action_horizon` is the single source of truth for chunk length.
@@ -175,11 +190,6 @@ class Qwen_GR00T(baseframework):
         actions = [example["action"] for example in examples]  # label [B， len, 7]
 
         state = [example["state"] for example in examples] if "state" in examples[0] else None  # [B, 1, state_dim]
-
-        # ETH auxiliary target — only when ALL samples have eth_action (OFT와 동일 규약).
-        eth_actions_raw = None
-        if all("eth_action" in ex for ex in examples):
-            eth_actions_raw = [ex["eth_action"] for ex in examples]
 
         # Step 1: QWenVL input format
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions)
@@ -222,21 +232,10 @@ class Qwen_GR00T(baseframework):
                 state = torch.tensor(np.array(state), device=last_hidden.device, dtype=last_hidden.dtype)
                 state_repeated = state.repeat(repeated_diffusion_steps, 1, 1)
 
-            # ETH 보조 타겟도 동일하게 horizon 슬라이스 + diffusion step 복제.
-            eth_target_repeated = None
-            eth_loss_weight = float(getattr(self.config.framework, "eth_loss_weight", 0.0))
-            if eth_loss_weight > 0.0 and eth_actions_raw is not None:
-                eth_tensor = torch.tensor(
-                    np.array(eth_actions_raw), device=last_hidden.device, dtype=torch.float32
-                )  # float32 target (same rationale as the BTC target above)
-                eth_target = eth_tensor[:, -self.action_horizon:, :]
-                eth_target_repeated = eth_target.repeat(repeated_diffusion_steps, 1, 1)
-
             action_loss = self.action_model(
                 last_hidden_repeated, actions_target_repeated, state_repeated,
                 encoder_attention_mask=backbone_attention_mask,
-                eth_target=eth_target_repeated,
-            )  # (B, chunk_len, action_dim)
+            )  # (B, chunk_len, action_dim=4*N)
 
         return {"action_loss": action_loss}
 

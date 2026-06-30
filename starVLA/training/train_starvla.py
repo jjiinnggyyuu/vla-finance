@@ -414,9 +414,11 @@ class VLATrainer(TrainerUtils):
             if self.accelerator.sync_gradients:
                 self.lr_scheduler.step()
 
-        return {
-            "action_dit_loss": action_loss.item(),
-        }
+        metrics = {"action_dit_loss": action_loss.item()}
+        for key in ("l1_loss", "dct_loss", "eth_loss"):
+            if key in output_dict:
+                metrics[key] = output_dict[key].item()
+        return metrics
 
     def _finalize_training(self):
         """Training end processing."""
@@ -466,8 +468,14 @@ def main(cfg) -> None:
     trainer.train()
 
     logger.info("... and that's all, folks!")
-    dist.barrier()
-    dist.destroy_process_group()
+    # NCCL teardown은 메모리 사용량이 큰 모델(GR00T 등)에서 종료 시점에
+    # 'unhandled cuda error / out of memory'를 던질 수 있다. 학습·저장은 이미
+    # 끝난 뒤이므로 정리 단계 예외는 무시한다 (실행 결과에는 영향 없음).
+    try:
+        dist.barrier()
+        dist.destroy_process_group()
+    except Exception as e:
+        logger.warning(f"Ignoring error during distributed teardown: {e}")
 
 
 if __name__ == "__main__":
