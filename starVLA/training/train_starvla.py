@@ -373,6 +373,11 @@ class VLATrainer(TrainerUtils):
         if self.accelerator.is_main_process:
             normalized_actions = output_dict["normalized_actions"]
             actions = np.array(actions)
+            # In read-off mode predict_action returns BTC only (fewer channels
+            # than the full multi-asset target); compare on the shared channels.
+            c = normalized_actions.shape[-1]
+            if actions.shape[-1] != c:
+                actions = actions[..., :c]
             num_pots = np.prod(actions.shape)
             score = TrainerUtils.euclidean_distance(normalized_actions, actions)
             step_metrics["mse_score"] = score / num_pots

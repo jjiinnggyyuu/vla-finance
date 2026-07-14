@@ -87,6 +87,7 @@ def main() -> None:
     p.add_argument("--config_yaml", required=True)
     p.add_argument("--ckpt", required=True)
     p.add_argument("--output_npz", required=True)
+    p.add_argument("--split", default="test", choices=["validation", "test"])
     p.add_argument("--num_draws", type=int, default=20)
     p.add_argument("--batch_size", type=int, default=8)
     p.add_argument("--num_workers", type=int, default=2)
@@ -102,7 +103,7 @@ def main() -> None:
     head = model.action_model
     print(f"[velloss] ckpt={args.ckpt}  draws={args.num_draws}")
 
-    ds = get_vla_dataset(cfg.datasets.vla_data, mode="test")
+    ds = get_vla_dataset(cfg.datasets.vla_data, mode=args.split)
     loader = DataLoader(ds, batch_size=args.batch_size, collate_fn=collate_fn,
                         num_workers=args.num_workers, shuffle=False)
 

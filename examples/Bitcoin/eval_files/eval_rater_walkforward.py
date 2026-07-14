@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from risk_coverage import _kslot_backtest  # noqa: E402
 
 FEAT = "results/exp2_features"
-RATER = "results/exp4_rater"
+RATER = "results/exp4_rater"          # overridable via --rater_dir
 
 
 def _load(fold, split, k):
@@ -120,5 +120,9 @@ def main(k):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--k", type=int, default=12)
+    ap.add_argument("--rater_dir", default=RATER,
+                    help="dir with per-bar loss dumps (default exp4 rater; "
+                         "use results/v17_lt for the integrated loss-token head)")
     a = ap.parse_args()
+    RATER = a.rater_dir
     main(a.k)

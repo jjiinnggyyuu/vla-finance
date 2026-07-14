@@ -151,6 +151,7 @@ class BitcoinOhlcDataset(Dataset):
         num_text_candles: int = 10,
         use_volume_in_text: bool = False,
         use_roc_in_text: bool = False,
+        input_relative: bool = False,
         timeframe_label: str = "hourly",
     ) -> None:
         """
@@ -179,6 +180,10 @@ class BitcoinOhlcDataset(Dataset):
         self.num_text_candles = int(num_text_candles)
         self.use_volume_in_text = bool(use_volume_in_text)
         self.use_roc_in_text = bool(use_roc_in_text)
+        # Input normalisation: render candle OHLC as % change from the asset's
+        # current price (anchor), making the text scale-invariant across time
+        # (BTC $19k vs $100k look identical) — addresses distribution shift.
+        self.input_relative = bool(input_relative)
         self.timeframe_label = str(timeframe_label)
 
         if self.target_mode not in ("log_ratio", "delta"):
@@ -311,12 +316,25 @@ class BitcoinOhlcDataset(Dataset):
                 parts.append(f"{h}h={sign}{v:.2f}%")
             return f"{label} change (from t-12): " + "  ".join(parts)
 
-        vol_header = " / volume" if self.use_volume_in_text else ""
+        vol_header = " / volume(V) + quote-amount(A,$M)" if self.use_volume_in_text else ""
         tf = self.timeframe_label
 
-        def _render_candles(candles):
+        def _render_candles(candles, anchor=None):
             n = len(candles)
             out = []
+            if self.input_relative:
+                base = float(anchor) if anchor else float(candles[-1]["close"])
+                def _p(v):
+                    r = (float(v) / base - 1.0) * 100.0 if base > 0 else 0.0
+                    return f"{'+' if r >= 0 else ''}{r:.2f}%"
+                for i, row in enumerate(candles):
+                    offset = n - i
+                    candle = (f"t-{offset:<2}: O={_p(row['open'])} H={_p(row['high'])}"
+                              f" L={_p(row['low'])} C={_p(row['close'])}")
+                    if self.use_volume_in_text:
+                        candle += f" V={row['volume']:.2f} A={row['amount']/1e6:.2f}"
+                    out.append(candle)
+                return out
             for i, row in enumerate(candles):
                 offset = n - i
                 candle = (f"t-{offset:<2}: O={row['open']:.2f} H={row['high']:.2f}"
@@ -335,8 +353,9 @@ class BitcoinOhlcDataset(Dataset):
             roc = _roc_str(primary_past, primary_name)
             if roc:
                 lines.append(roc)
-        lines += ["", f"Recent {self.num_text_candles} candles (open / high / low / close{vol_header}):"]
-        lines += _render_candles(primary_past)
+        _fmt_note = " as % vs current price" if self.input_relative else ""
+        lines += ["", f"Recent {self.num_text_candles} candles (open / high / low / close{vol_header}){_fmt_note}:"]
+        lines += _render_candles(primary_past, last_close)
 
         # Co-predicted / correlated assets
         for name, past in asset_pasts[1:]:
@@ -346,7 +365,7 @@ class BitcoinOhlcDataset(Dataset):
                 roc = _roc_str(past, name)
                 if roc:
                     lines.append(roc)
-            lines += _render_candles(past)
+            lines += _render_candles(past, past[-1]["close"])
 
         lines.append("")
         if len(asset_pasts) > 1:
@@ -498,6 +517,7 @@ def get_vla_dataset(data_cfg, mode: str = "train", **kwargs) -> BitcoinOhlcDatas
         ),
         use_volume_in_text=_cfg_get(data_cfg, "use_volume_in_text", False),
         use_roc_in_text=_cfg_get(data_cfg, "use_roc_in_text", False),
+        input_relative=_cfg_get(data_cfg, "input_relative", False),
         timeframe_label=_cfg_get(data_cfg, "timeframe_label", "hourly"),
     )
 

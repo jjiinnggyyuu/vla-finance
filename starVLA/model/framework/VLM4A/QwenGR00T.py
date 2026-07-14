@@ -33,7 +33,22 @@ IGNORE_INDEX = -100
 
 from starVLA.model.framework.base_framework import baseframework
 from starVLA.model.framework.share_tools import merge_framework_config
-from starVLA.model.modules.action_model.GR00T_ActionHeader import FlowmatchingActionHead, get_action_model
+from starVLA.model.modules.action_model.GR00T_ActionHeader import (
+    FlowmatchingActionHead,
+    get_action_model as _get_dit_action_model,
+)
+from starVLA.model.modules.action_model.MSAT_ActionHeader import (
+    get_action_model as _get_msat_action_model,
+)
+
+
+def get_action_model(config):
+    """Dispatch to the DiT (GR00T) or MSAT (RLDX-1) flow-matching head based on
+    ``framework.action_model.action_model_type`` ("DiT-*" -> DiT, "MSAT-*" -> MSAT)."""
+    amt = str(config.framework.action_model.action_model_type)
+    if amt.upper().startswith("MSAT"):
+        return _get_msat_action_model(config)
+    return _get_dit_action_model(config)
 from starVLA.model.modules.vlm import get_vlm_model
 from starVLA.model.tools import FRAMEWORK_REGISTRY
 from starVLA.training.trainer_utils.trainer_tools import resize_images

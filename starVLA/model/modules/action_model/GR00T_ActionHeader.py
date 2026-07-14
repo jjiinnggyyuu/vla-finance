@@ -292,6 +292,29 @@ class FlowmatchingActionHead(nn.Module):
                 for _ in range(self.num_readoff_assets)
             ])
 
+        # ── Loss-prediction module (Learning Loss, 1905.03677) ────────────
+        #   A small head that predicts the flow-matching velocity loss of the
+        #   generated 12-candle chunk -- one scalar per bar, used downstream as
+        #   a confidence gate (higher predicted loss = less confident).
+        #   • reads the DiT's action-token output features (mean-pooled)
+        #   • target = per-sample velocity loss, DETACHED (stop-gradient), so the
+        #     module imitates the loss without steering the target/backbone
+        #   • trained with a PAIRWISE RANKING loss (not MSE): the paper shows MSE
+        #     fails because the loss scale drifts during training; ranking keeps
+        #     only the order, which is all our trade gate needs.
+        #   loss_token_detach=True (default) fully isolates the price predictor;
+        #   set False to co-adapt (gradient flows into the DiT/backbone).
+        self.use_loss_token = bool(getattr(config, "loss_token", False))
+        if self.use_loss_token:
+            self.loss_token_weight = float(getattr(config, "loss_token_weight", 0.1))
+            self.loss_token_margin = float(getattr(config, "loss_token_margin", 1.0))
+            self.loss_token_detach = bool(getattr(config, "loss_token_detach", True))
+            self.loss_head = MLP(
+                input_dim=self.model.config.output_dim,
+                hidden_dim=self.hidden_size,
+                output_dim=1,
+            )
+
         # ── Per-asset loss weights (BTC-priority) ─────────────────────────
         #   `asset_weights` (one per asset, e.g. [0.6, 0.2, 0.2]) is expanded to
         #   a per-channel vector (each asset spans OHLC=4 channels) and applied
@@ -421,7 +444,33 @@ class FlowmatchingActionHead(nn.Module):
                 pred_i = dec(model_output)[:, -actions.shape[1]:]      # (B, horizon, 4)
                 tgt_i = readoff_targets[:, :, i * 4:(i + 1) * 4]
                 loss = loss + ro_w * F.l1_loss(pred_i, tgt_i)
+
+        # ── Loss-prediction ranking loss (Learning Loss, 1905.03677) ───────
+        if self.use_loss_token:
+            # per-sample flow-matching velocity loss = detached ground-truth
+            # target for the module (same channel weighting as the main loss).
+            per_sample_vloss = (((pred_actions - velocity) ** 2) * aw).mean(dim=(1, 2)).detach()
+            feat = model_output[:, -actions.shape[1]:]         # DiT action-token features
+            if self.loss_token_detach:
+                feat = feat.detach()                           # protect price predictor/backbone
+            lhat = self.loss_head(feat.mean(dim=1)).squeeze(-1)  # (B,) predicted loss
+            loss = loss + self.loss_token_weight * self._rank_loss(lhat, per_sample_vloss)
         return loss
+
+    def _rank_loss(self, lhat: torch.Tensor, ltrue: torch.Tensor) -> torch.Tensor:
+        """Pairwise margin-ranking loss (Yoo & Kweon Eq. 2). Compares each item i
+        against its mirror B-1-i; penalises predicted pairs whose order disagrees
+        with the true-loss order. Scale-free — only the ranking is learned."""
+        B = lhat.shape[0]
+        if B % 2 == 1:                       # need an even number of items to pair
+            lhat, ltrue = lhat[:B - 1], ltrue[:B - 1]
+            B -= 1
+        if B < 2:
+            return lhat.new_zeros(())
+        dp = (lhat - lhat.flip(0))[:B // 2]         # predicted-loss differences
+        dt = (ltrue - ltrue.flip(0))[:B // 2]       # true-loss differences (detached)
+        sign = 2.0 * torch.sign(torch.clamp(dt, min=0)) - 1.0   # +1 if l_i>l_j else -1
+        return F.relu(self.loss_token_margin - sign * dp).mean()
 
     def _freq_loss(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """DCT-II 주파수 도메인 보조 손실 (VLANeXt 구현, OFT와 동일).
@@ -538,6 +587,52 @@ class FlowmatchingActionHead(nn.Module):
             # Update actions using euler integration.
             actions = actions + dt * pred_velocity
         return actions
+
+    @torch.no_grad()
+    def predict_loss(
+        self,
+        vl_embs: torch.Tensor,
+        actions: torch.Tensor,
+        state: torch.Tensor = None,
+        encoder_attention_mask=None,
+        draws: int = 20,
+    ) -> torch.Tensor:
+        """Per-bar predicted velocity-loss (confidence signal) from the loss head.
+
+        Replicates the training forward pass `draws` times (fresh noise / time each)
+        and averages the loss-head output -> shape (B,). Higher = the model expects
+        a larger flow-matching loss = less confident. Mirrors the exp4 rater dump
+        protocol so it drops into the same walk-forward eval pipeline.
+        """
+        assert self.use_loss_token, "predict_loss requires framework.action_model.loss_token=true"
+        device = vl_embs.device
+        B = actions.shape[0]
+        state_features = self.state_encoder(state) if state is not None else None
+        acc = torch.zeros(B, device=device, dtype=torch.float32)
+        for _ in range(draws):
+            noise = torch.randn(actions.shape, device=actions.device, dtype=actions.dtype)
+            t = self.sample_time(B, device=actions.device, dtype=actions.dtype)[:, None, None]
+            noisy = (1 - t) * noise + t * actions
+            t_disc = (t[:, 0, 0] * self.num_timestep_buckets).long()
+            action_features = self.action_encoder(noisy, t_disc)
+            if self.config.add_pos_embed:
+                pos_ids = torch.arange(action_features.shape[1], dtype=torch.long, device=device)
+                action_features = action_features + self.position_embedding(pos_ids).unsqueeze(0)
+            future_tokens = self.future_tokens.weight.unsqueeze(0).expand(B, -1, -1)
+            sa_embs = (
+                torch.cat((state_features, future_tokens, action_features), dim=1)
+                if state_features is not None
+                else torch.cat((future_tokens, action_features), dim=1)
+            )
+            model_output = self.model(
+                hidden_states=sa_embs,
+                encoder_hidden_states=vl_embs,
+                encoder_attention_mask=encoder_attention_mask,
+                timestep=t_disc,
+            )
+            feat = model_output[:, -actions.shape[1]:].mean(dim=1)
+            acc += self.loss_head(feat).squeeze(-1).float()
+        return acc / draws
 
     @property
     def device(self):

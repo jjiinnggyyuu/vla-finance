@@ -1,0 +1,302 @@
+\documentclass[10pt,aspectratio=169]{beamer}
+\usetheme{default}
+\usecolortheme{dolphin}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\setbeamertemplate{itemize items}[circle]
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{amssymb}
+\usepackage{pifont}
+\usepackage{colortbl}
+
+\definecolor{good}{RGB}{20,120,45}
+\definecolor{bad}{RGB}{175,30,30}
+\definecolor{hl}{RGB}{235,244,236}
+\newcommand{\gd}[1]{\textbf{\textcolor{good}{#1}}}
+\newcommand{\bd}[1]{\textcolor{bad}{#1}}
+\newcommand{\yes}{\textcolor{good}{\ding{51}}}
+\newcommand{\no}{\textcolor{bad}{\ding{55}}}
+
+\title{Bitcoin VLA --- Per-Axis Ablation and Setup Selection}
+\subtitle{Which design choices matter, and where the ceiling is}
+\date{}
+\author{}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\vspace{-2em}
+\begin{center}\footnotesize
+Robot VLA (frozen Qwen3-VL + flow-matching head) adapted to BTC forecasting\\
+Goal: isolate each design axis, decide the best setup, locate the bottleneck.
+\end{center}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Setup and metrics (read this once)}
+\footnotesize
+\textbf{Task.} Recent 10 hourly candles $\rightarrow$ next 12 candles (log-return deltas).
+Backbone frozen; only the action head trains.\\[0.4em]
+\textbf{Protocol.} Walk-forward 6-fold (2020--2025): train Jan--Oct, val Nov, \emph{test Dec}.
+All metrics on BTC only, holding horizon $k{=}6$ hours.\\[0.6em]
+\begin{tabular}{@{}ll@{}}
+\toprule
+Metric & Meaning \\ \midrule
+\textbf{DA} & directional accuracy (sign match), 0.5 = coin flip \\
+\textbf{ret} & backtest return, \textbf{long-only} strategy (see below), 0.1\% slippage \\
+\textbf{AER} & ret $-$ buy\&hold; \gd{$>0$ beats passive holding} \\
+ & (B\&H = pure hold, start$\to$end price change; \textbf{$k$-independent}, ${+}7.1\%$ over folds) \\
+$\boldsymbol{\sigma}\downarrow$ & regime index = across-fold std of long-ratio; \bd{high = bets one way per fold} \\
+\textbf{MAE}$\downarrow$ & close-price error (USD); \bd{high = directionally lucky but numerically wrong} \\
+\bottomrule
+\end{tabular}
+\\[0.6em]
+\textbf{Trading strategies} (signal $\hat r$ = predicted $k$-step return, gate $\theta$):\\
+\quad\textbf{long-only}\;: $\hat r>\theta \Rightarrow$ long $k$\,h, else cash \hfill
+\textbf{long-short}\;: $\hat r>\theta \Rightarrow$ long;\; $\hat r<-\theta \Rightarrow$ short; else cash\\
+\quad$\theta$ picked per setup from $\{0.1,0.3,0.5,1.0\}\%$ by 6-fold-mean ret (one global $\theta$, not per fold).\\[0.4em]
+\textbf{All main tables use long-only.} The Kronos slide shows both strategies, labeled.\\[0.4em]
+\textbf{Four design axes:} (i)~assets, (ii)~head, (iii)~diffusion scope, (iv)~normalization.
+\end{frame}
+
+% ============================================================
+\begin{frame}{The whole map: 8 controlled runs, one table \hfill\normalfont\small($k{=}6$\,h, long-only)}
+\centering\scriptsize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llll c cc c c cc@{}}
+\toprule
+\# & Head & Assets & Scope & Norm & DA & ret & $\theta$ & AER & $\sigma\!\downarrow$ & MAE$\downarrow$ \\ \midrule
+1 & DiT  & BTC   & ---      & \yes & 0.517 & \gd{+0.040} & 0.5\% & \gd{$-$0.032} & 0.178 & 670 \\
+2 & DiT  & multi & all-diff & \yes & 0.512 & \bd{$-$0.013} & 0.1\% & $-$0.085 & 0.142 & 629 \\
+3 & MSAT & BTC   & ---      & \yes & 0.507 & +0.013 & 0.5\% & $-$0.058 & 0.097 & 596 \\
+\rowcolor{hl}
+4 & MSAT & multi & all-diff & \yes & 0.513 & \gd{+0.027} & 0.5\% & \gd{$-$0.044} & 0.111 & 580 \\
+5 & MSAT & multi & all-diff & \no\,raw   & 0.523 & +0.016 & 1.0\% & $-$0.055 & \bd{0.406} & \bd{1096} \\
+6 & MSAT & multi & read-off & \no\,raw   & 0.512 & +0.034 & 1.0\% & $-$0.037 & \bd{0.428} & \bd{5497} \\
+7 & MSAT & multi & read-off & \yes & 0.504 & $-$0.003 & 0.1\% & $-$0.074 & 0.068 & 622 \\
+8 & MSAT & multi & all-diff & in-norm    & 0.494 & +0.013 & 1.0\% & $-$0.059 & 0.121 & 578 \\
+\bottomrule
+\end{tabular}
+\\[0.7em]
+\footnotesize
+Rows 1--4 = normalized; 5--6 = raw (no target norm); 7 = read-off; 8 = input-normalization variant.\\
+\textbf{Every AER is negative.} We now read this axis by axis.
+\end{frame}
+
+% ============================================================
+\begin{frame}{Axes (i)+(ii): Assets $\times$ Head \quad(they interact) \hfill\normalfont\small($k{=}6$\,h, long-only)}
+\centering\small
+\setlength{\tabcolsep}{7pt}
+\begin{tabular}{@{}ll cc c c@{}}
+\toprule
+Assets & Head & DA & ret & $\theta$ & AER \\ \midrule
+\multirow{2}{*}{single (BTC)}
+ & \gd{DiT}  & 0.517 & \gd{+0.040} & 0.5\% & \gd{$-$0.032} \\
+ & MSAT      & 0.507 & +0.013 & 0.5\% & $-$0.058 \\ \midrule
+\multirow{2}{*}{multi (BTC+ETH+XRP)}
+ & DiT       & 0.512 & \bd{$-$0.013} & 0.1\% & $-$0.085 \\
+ & \gd{MSAT} & 0.513 & \gd{+0.027} & 0.5\% & \gd{$-$0.044} \\
+\bottomrule
+\end{tabular}
+\\[1em]
+\begin{block}{Conclusion}
+\footnotesize
+\textbf{The best head flips with asset count.} Single-asset $\rightarrow$ \gd{DiT} (+0.040);
+multi-asset $\rightarrow$ \gd{MSAT} (+0.027).
+Adding ETH/XRP \bd{hurts DiT} ($+0.040\!\to\!-0.013$) but \gd{helps MSAT} ($+0.013\!\to\!+0.027$):
+only MSAT's \emph{joint self-attention} exploits cross-asset structure; DiT's cross-attention just
+gets distracted.
+\end{block}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Axis (iii): Diffusion scope --- all-diff vs.\ read-off \hfill\normalfont\small($k{=}6$\,h, long-only)}
+\centering\small
+\setlength{\tabcolsep}{7pt}
+\begin{tabular}{@{}ll cc c cc@{}}
+\toprule
+Norm & Scope & DA & ret & $\theta$ & AER & MAE \\ \midrule
+\multirow{2}{*}{on}
+ & \gd{all-diff} & 0.513 & \gd{+0.027} & 0.5\% & \gd{$-$0.044} & 580 \\
+ & read-off      & 0.504 & $-$0.003 & 0.1\% & $-$0.074 & 622 \\ \midrule
+\multirow{2}{*}{raw}
+ & all-diff      & 0.523 & +0.016 & 1.0\% & $-$0.055 & 1096 \\
+ & read-off$^\ast$ & 0.512 & +0.034 & 1.0\% & $-$0.037 & \bd{5497} \\
+\bottomrule
+\end{tabular}
+\\[1em]
+\begin{block}{Conclusion}
+\footnotesize
+\textbf{Under normalization, all-diff wins} ($+0.027$ vs.\ $-0.003$): jointly diffusing all 3 assets
+beats treating ETH/XRP as a discarded L1 auxiliary.
+$^\ast$Read-off looks stronger under \emph{raw} ($+0.034$) --- but that ``edge'' is the same
+regime-memorization pathology (\bd{$\sigma{=}0.43$, MAE${=}5497$}), not skill. \emph{Scope is a
+second-order knob.}
+\end{block}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Axis (iv): Normalization --- the decisive knob \hfill\normalfont\small($k{=}6$\,h, long-only)}
+\centering\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}l cc c c cc@{}}
+\toprule
+Target norm & DA & ret & $\theta$ & AER & $\sigma\!\downarrow$ & MAE$\downarrow$ \\ \midrule
+\gd{on}       & 0.513 & \gd{+0.027} & 0.5\% & \gd{$-$0.044} & \gd{0.111} & \gd{580} \\
+off (raw)     & 0.523 & +0.016 & 1.0\% & $-$0.055 & \bd{0.406} & \bd{1096} \\
+input-norm    & 0.494 & +0.013 & 1.0\% & $-$0.059 & 0.121 & 578 \\
+\bottomrule
+\end{tabular}
+\\[0.6em]
+\textbf{Per-fold long-ratio} (MSAT, multi) --- the mechanism:
+\\[0.2em]
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}l cccccc@{}}
+\toprule
+ & 2020 & 2021 & 2022 & 2023 & 2024 & 2025 \\ \midrule
+norm & 0.73 & 0.43 & 0.46 & 0.57 & 0.60 & 0.42 \\
+raw  & 0.97 & \bd{0.01} & \bd{0.01} & 0.88 & 0.87 & 0.40 \\
+\bottomrule
+\end{tabular}
+\\[0.6em]
+\begin{block}{Conclusion}
+\footnotesize
+\textbf{Normalization is the single most important choice.} It cuts $\sigma$ \gd{$3.7\times$}
+(0.41$\to$0.11) and halves MAE, \emph{at higher ret}. Raw's higher DA is a \bd{mirage}: it bets
+$\approx$100\%/0\% per fold (memorizing each year's trend). Input-normalization does \emph{not}
+help --- \emph{target} norm is what matters.
+\end{block}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Verdict: the best from-scratch setup \hfill\normalfont\small($k{=}6$\,h, long-only)}
+\footnotesize
+\begin{columns}[T]
+\column{0.5\textwidth}
+\textbf{Best runs (by ret / AER):}
+\begin{itemize}\itemsep2pt
+\item \gd{DiT + BTC + norm} \\ DA 0.517, ret +0.040, AER $-$0.032
+\item \gd{MSAT + multi + all-diff + norm} \\ DA 0.513, ret +0.027, AER $-$0.044
+\end{itemize}
+\vspace{0.5em}
+\textbf{Rules that hold:}
+\begin{itemize}\itemsep2pt
+\item[(iv)] \gd{normalize targets} --- always
+\item[(i,ii)] match head to assets: \\ single$\to$DiT, multi$\to$MSAT \\
+ {\scriptsize\bd{($k{=}6$ only --- see next slide}}
+\item[(iii)] all-diff $\geq$ read-off
+\end{itemize}
+
+\column{0.5\textwidth}
+\begin{block}{But the ceiling is hard}
+Every from-scratch setup has \bd{AER $<0$}: on average \bd{nothing beats buy-and-hold}.\\[0.4em]
+Across all four axes, structural choices only \emph{reallocate} a weak signal --- they do not
+create one.
+\end{block}
+\vspace{0.3em}
+\centering
+\textit{The architecture is fine; the training is under-resourced.}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Does the verdict survive other horizons? \hfill\normalfont\small($k{=}1\!\to\!12$)}
+\centering\small
+\setlength{\tabcolsep}{9pt}
+Best long-only \textbf{ret} per holding horizon (normalized setups only):
+\\[0.5em]
+\begin{tabular}{@{}l cccc@{}}
+\toprule
+Setup & $k{=}1$ & $k{=}3$ & $k{=}6$ & $k{=}12$ \\ \midrule
+DiT + BTC                & \gd{$-$0.003} & \gd{+0.011} & \gd{+0.040} & +0.038 \\
+MSAT + BTC               & $-$0.024 & $-$0.014 & +0.013 & \gd{+0.039} \\
+DiT + multi              & $-$0.005 & $-$0.017 & $-$0.013 & +0.031 \\
+MSAT + multi (all-diff)  & $-$0.006 & $-$0.003 & +0.027 & +0.029 \\ \midrule
+\emph{raw (memorization)}$^\ast$ & \bd{$-$0.025} & \bd{$-$0.025} & \bd{+0.016} & \bd{+0.050} \\
+\bottomrule
+\end{tabular}
+\\[0.5em]
+{\scriptsize $^\ast$MSAT+multi, no norm --- high ret but $\sigma{=}0.41$, MAE${=}1096$ (mirage), at \emph{every} $k$.}
+\\[0.6em]
+\begin{columns}[T]
+\column{0.52\textwidth}
+\begin{block}{Robust across $k$}
+\footnotesize
+\begin{itemize}\itemsep1pt
+\item \gd{ret rises with horizon} --- signal pays off on longer holds
+\item \gd{BTC (single-asset) is best at every $k$}
+\item normalization essential; raw stays a mirage
+\item \bd{all AER $<0$}: B\&H never beaten
+\end{itemize}
+\end{block}
+\column{0.48\textwidth}
+\begin{block}{Horizon-dependent}
+\footnotesize
+\begin{itemize}\itemsep1pt
+\item which BTC head wins: \\ \gd{DiT} for $k\!\le\!6$, \gd{MSAT} catches up at $k{=}12$
+\item ``single$\to$DiT / multi$\to$MSAT'' is a \bd{$k{=}6$ artifact}
+\item multi-asset DiT stops hurting by $k{=}12$
+\end{itemize}
+\end{block}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Where the signal actually comes from: pretraining \hfill\normalfont\small(fold 2025, both strategies)}
+\centering\small
+Clean out-of-sample fold (2025, a falling market: B\&H $=-5.0\%$). Best $\theta$ per cell.
+\\[0.6em]
+\setlength{\tabcolsep}{7pt}
+\begin{tabular}{@{}l cc cc@{}}
+\toprule
+ & \multicolumn{2}{c}{\textbf{long-only}} & \multicolumn{2}{c}{\textbf{long-short}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Model (fold 2025) & ret$_{k6}$ & ret$_{k12}$ & ret$_{k6}$ & ret$_{k12}$ \\ \midrule
+DiT-BTC (from scratch)    & \bd{$-$0.014}{\tiny@1.0} & \bd{$-$0.004}{\tiny@0.3} & \bd{$-$0.046}{\tiny@1.0} & +0.003{\tiny@1.0} \\
+MSAT-Multi (from scratch) & \bd{$-$0.004}{\tiny@1.0} & \bd{$-$0.001}{\tiny@1.0} & \bd{$-$0.007}{\tiny@1.0} & +0.004{\tiny@1.0} \\
+\gd{Kronos (pretrained)}  & \gd{+0.016}{\tiny@0.1} & \gd{+0.035}{\tiny@0.1} & \gd{+0.059}{\tiny@0.3} & \gd{+0.125}{\tiny@0.3} \\ \midrule
+Buy-and-hold (pure hold)  & \multicolumn{4}{c}{$-$0.050 \; ($k$-independent)} \\
+\bottomrule
+\end{tabular}
+\\[0.5em]
+{\footnotesize {\tiny@x} = selected gate $\theta$ in \%. \quad
+DA$_{k6}$: DiT 0.489, MSAT 0.511, \gd{Kronos 0.534} (DA$_{k12}$ 0.559).}
+\\[0.6em]
+\begin{block}{Takeaway}
+\footnotesize
+\textbf{Under \emph{either} strategy, Kronos is the only profitable model.} Long-short widens its
+edge ($+0.059/+0.125$) because it also profits from the \emph{falling} market; our from-scratch
+models lose long-only and barely break even long-short --- despite \emph{training on} 2025
+Jan--Oct, which \gd{Kronos never saw}. \textbf{The bottleneck is the absence of pretraining, not
+the VLA design.}
+\end{block}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Engineering has plateaued --- new directions}
+\footnotesize
+Target-norm, head choice, asset mix, scope, input-norm: all tuned. \textbf{AER still $<0$.}
+Engineering the pipeline reallocates signal but cannot manufacture it. Next, three
+non-engineering bets:
+\\[0.8em]
+\begin{enumerate}\itemsep4pt
+\item \textbf{Self-predicted action loss (13th token).} Generate 12 candles \emph{plus} a 13th
+token trained to predict the model's own error $\Rightarrow$ built-in confidence signal.
+\item \textbf{Confidence-gated trading.} Trade only when \emph{predicted loss is small and predicted
+move is large} --- act on the model's high-conviction, high-payoff cases, sit out the rest.
+\item \textbf{Financial pretraining of the VLA.} Give the VLA the advantage Kronos already has,
+rather than training from scratch on 10 months per fold.
+\end{enumerate}
+\vspace{0.6em}
+\centering\textit{(4)+(5) detailed next, once the references are in.}
+\end{frame}
+
+\begin{frame}
+\centering
+\Large Backup / discussion
+\end{frame}
+
+\end{document}

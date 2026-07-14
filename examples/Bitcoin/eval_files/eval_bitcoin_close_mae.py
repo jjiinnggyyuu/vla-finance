@@ -82,20 +82,34 @@ def restore_prices_delta(delta: np.ndarray, last_close: np.ndarray) -> np.ndarra
 # Slippage is charged on |position| inside the backtest, so fractional positions
 # pay proportionally less cost.
 
+# Position functions take (sample, k) so context-aware strategies (e.g. a
+# trend filter using the price series) can look beyond the single prediction.
 def _ls_pos(theta: float):
     """Long-short with confidence gate θ."""
-    return lambda pr: 1.0 if pr > theta else (-1.0 if pr < -theta else 0.0)
+    return lambda s, k: 1.0 if s["pred_ret"][k] > theta else (-1.0 if s["pred_ret"][k] < -theta else 0.0)
 
 
 def _lo_pos(theta: float):
     """Long-only with confidence gate θ (no shorting)."""
-    return lambda pr: 1.0 if pr > theta else 0.0
+    return lambda s, k: 1.0 if s["pred_ret"][k] > theta else 0.0
 
 
 def _mag_pos(scale: float):
     """Magnitude-scaled position: bet size proportional to predicted move."""
-    s = scale if scale > 1e-12 else 1e-12
-    return lambda pr: float(np.clip(pr / s, -1.0, 1.0))
+    sc = scale if scale > 1e-12 else 1e-12
+    return lambda s, k: float(np.clip(s["pred_ret"][k] / sc, -1.0, 1.0))
+
+
+def _downside_pos(theta: float):
+    """Downside-protection overlay: default 100% long (capture B&H upside),
+    step aside to cash only when the model strongly predicts a drop (< -θ)."""
+    return lambda s, k: 1.0 if s["pred_ret"][k] > -theta else 0.0
+
+
+def _trend_pos(theta: float):
+    """Trend filter: long only when the model is bullish (>θ) AND price is in an
+    uptrend (above its trailing SMA); else cash. Sidesteps bear regimes."""
+    return lambda s, k: 1.0 if (s["pred_ret"][k] > theta and s.get("trend_up", True)) else 0.0
 
 
 def _pct(theta: float) -> str:
@@ -253,6 +267,7 @@ def compute_metrics_from_prices(
         # 트레이딩 시뮬레이션용 샘플 (현재가 base 대비 수익률)
         sample = {
             "ts": ts_list[idx],
+            "lc": lc,                     # current price (for trend-filter SMA)
             "pred_ret": {k: float(pred_prices[k-1, 3]) / lc - 1.0 for k in K_VALUES},
             "true_ret": {k: float(true_prices[k-1, 3]) / lc - 1.0 for k in K_VALUES},
         }
@@ -290,6 +305,16 @@ def compute_metrics_from_prices(
     # ---- 타임스탬프 정렬 -----------------------------------------------
     all_samples.sort(key=lambda x: x["ts"])
     N = len(all_samples)
+
+    # Trend filter context: uptrend if current price > trailing SMA of current
+    # prices. Samples are consecutive (stride-1) so lc[] is the price series.
+    # Uses only past/current prices (no look-ahead).
+    _MA_WIN = 24
+    _lc = [s["lc"] for s in all_samples]
+    for i, s in enumerate(all_samples):
+        lo = max(0, i - _MA_WIN + 1)
+        sma = sum(_lc[lo:i + 1]) / (i - lo + 1)
+        s["trend_up"] = bool(s["lc"] > sma)
 
     # ---- aggregate metrics -----------------------------------------------
     close_mae    = total_abs_error / max(total_count, 1)
@@ -337,9 +362,8 @@ def compute_metrics_from_prices(
             cap_b = 1.0 / k
             for t in range(offset, N, k):
                 s = samples[t]
-                pred_ret = s["pred_ret"][k]
                 true_ret = s["true_ret"][k]
-                position = pos_fn(pred_ret)                       # in [-1, +1]
+                position = pos_fn(s, k)                           # in [-1, +1]
                 slot_ret = position * true_ret - abs(position) * slippage
                 cap_s *= (1.0 + slot_ret)
                 cap_b *= (1.0 + true_ret)
@@ -366,10 +390,14 @@ def compute_metrics_from_prices(
             return np.sum(slot_series, axis=0)
 
         equity_strat = np.concatenate([[1.0], _forward_fill_sum(strat_equity_t, k, 1.0 / k)])
-        equity_bench = np.concatenate([[1.0], _forward_fill_sum(bench_equity_t, k, 1.0 / k)])
+        # Buy-and-hold: PURE hold from the first to the last price over the eval
+        # window (k-independent). The old k-slot bench made B&H vary with k, which
+        # is unnatural (holding doesn't depend on the trading horizon).
+        _lc0 = float(samples[0]["lc"])
+        equity_bench = np.concatenate([[1.0], np.array([float(s["lc"]) / _lc0 for s in samples])])
 
         ret_s = float(equity_strat[-1] - 1.0)   # principal return (원금대비 누적)
-        ret_b = float(equity_bench[-1] - 1.0)   # buy-and-hold
+        ret_b = float(equity_bench[-1] - 1.0)   # buy-and-hold (k-independent, pure hold)
         aer = ret_s - ret_b
 
         run_max = np.maximum.accumulate(equity_strat)
@@ -409,7 +437,8 @@ def compute_metrics_from_prices(
     # Confidence-gate thresholds for the long-short / long-only sweeps.
     # The first (= slippage) reproduces the original "trade whenever it beats cost" rule.
     THETAS = [slippage, 0.003, 0.005, 0.01]
-    strategies_out = {"long_short": {}, "long_only": {}, "magnitude": {}}
+    strategies_out = {"long_short": {}, "long_only": {}, "magnitude": {},
+                      "downside": {}, "trend": {}}
 
     equity_curves = {}  # k -> (equity_strat, equity_bench)  시각화용 (primary strategy)
     for k in K_VALUES:
@@ -435,7 +464,8 @@ def compute_metrics_from_prices(
 
         # ── Strategy sweep: long-short & long-only over θ, plus magnitude-scaled ──
         for th in THETAS:
-            for name, pos in (("long_short", _ls_pos(th)), ("long_only", _lo_pos(th))):
+            for name, pos in (("long_short", _ls_pos(th)), ("long_only", _lo_pos(th)),
+                              ("downside", _downside_pos(th)), ("trend", _trend_pos(th))):
                 r = _run_strategy(all_samples, k, pos, slippage)
                 bucket = strategies_out[name].setdefault(_pct(th), {})
                 bucket[f"ret_k{k}"]        = r["ret"]
